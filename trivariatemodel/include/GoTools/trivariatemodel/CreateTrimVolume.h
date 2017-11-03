@@ -91,8 +91,8 @@ namespace Go
     vector<BoundingBox> bbox_;
     vector<DirectionCone> cone_;
     vector<double> sfsize_;
-    vector<sf_type> sf_type_;
-    vector<Point> sf_pt_;    // Unknown, freeform, planar, rotational
+    vector<sf_type> sf_type_; // Unknown, freeform, planar, rotational
+    vector<Point> sf_pt_;    
     vector<Point> sf_axis_;  // Only set for rotational surfaces
     vector<Point> sf_centre_;  // Only set for rotational surfaces
 

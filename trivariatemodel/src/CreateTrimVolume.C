@@ -54,7 +54,7 @@
 #include <fstream>
 #include <cstdlib>
 
-#define DEBUG
+//#define DEBUG
 
 using std::vector;
 using std::set;
@@ -538,7 +538,8 @@ CreateTrimVolume::findSideSfs(double tol, double angtol,
       if (sfsize_[prio[ki]] < mean_frac)
 	break;
     }
-  nmb = std::max(nmb, 6);
+  // nmb = std::max(nmb, 6); // Not always the case
+  nmb = (int)prio.size();
 
 #ifdef DEBUG
   std::ofstream ofp("prio_faces.g2");
@@ -797,8 +798,11 @@ CreateTrimVolume::findSideSfs(double tol, double angtol,
   std::ofstream of2("side_surfaces.g2");
   for (size_t ki=0; ki<side_sfs.size(); ++ki)
     {
-      side_sfs[ki].second->writeStandardHeader(of2);
-      side_sfs[ki].second->write(of2);
+      if (side_sfs[ki].second.get())
+	{
+	  side_sfs[ki].second->writeStandardHeader(of2);
+	  side_sfs[ki].second->write(of2);
+	}
     }
 #endif
   int stop_break = 1;
@@ -920,12 +924,7 @@ CreateTrimVolume::oneSideSf(int bd_type, vector<int>& face_grp_ix,
 	{
 	  // Otherwise, construct a new surface outside all candidates
 	  // Case distinction
-	  if (bd_type == 1)
-	    {
-	      // A planar side surface is expected 
-	      MESSAGE("Planar side surface is expected");
-	    }
-	  else if (bd_type == 2)
+	  if (bd_type == 2)
 	    {
 	      // A rotational side surface is expected
 	      double ext_fac = 1.0;
@@ -985,8 +984,83 @@ CreateTrimVolume::oneSideSf(int bd_type, vector<int>& face_grp_ix,
 	    }
 	  else
 	    {
-	      // Possibly free form side surface
-	      std::cout << "Free form side surface" << std::endl;
+	      // Planes and free form surfaces
+	      // Find the most distant surface in the current direction
+	      vector<Point> distant_pos(face_grp_ix.size());
+	      vector<Point> close_pos(face_grp_ix.size());
+	      for (size_t ki=0; ki<face_grp_ix.size(); ++ki)
+		{
+		  if (sf_type_[face_grp_ix[ki]] == PLANAR)
+		    {
+		      // Use already computed point on plane
+		      distant_pos[ki] = sf_pt_[face_grp_ix[ki]];
+		      close_pos[ki] = sf_pt_[face_grp_ix[ki]];
+		    }
+		  else
+		    {
+		      // Compute extremal point
+		      // Really use the non-trimmed surface?
+		      shared_ptr<ParamSurface> surf = under_sf_[face_grp_ix[ki]];
+		      Point ext_pnt, close_pnt;
+		      double ext_par[2], close_par[2];
+		      tpTolerances tptol = model_->getTolerances();
+		      bool modified =
+			SurfaceModelUtils::extremalPoint(surf, dir,
+							 tptol, ext_pnt, 
+							 ext_par);
+		      if (modified)
+			distant_pos[ki] = ext_pnt;
+
+		      bool modified2 =
+			SurfaceModelUtils::extremalPoint(surf, -dir,
+							 tptol, close_pnt, 
+							 close_par);
+		      if (modified2)
+			close_pos[ki] = close_pnt;
+		    }
+
+		  // Identify surfaces with most distant extremal point
+		  // and close point
+		  int ix1 = 0, ix2 = 0;
+		  double mind = close_pos[0]*dir;
+		  double maxd = distant_pos[0]*dir;
+		  for (size_t kj=1; kj<close_pos.size(); ++kj)
+		    {
+		      if (close_pos[ki]*dir > mind)
+			{
+			  mind = close_pos[ki]*dir;
+			  ix1 = (int)kj;
+			}
+		      if (distant_pos[ki]*dir > maxd)
+			{
+			  maxd = distant_pos[ki]*dir;
+			  ix2 = (int)kj;
+			}
+		    }
+		  
+		  if (ix1 == ix2 && sf_type_[face_grp_ix[ix1]] == PLANAR)
+		    {
+		      // Use surface as side surface
+		      // Currently free form surfaces are not used as
+		      // side surfaces as linear extension is not
+		      // implemented
+		      side_sf = std::make_pair(face_grp_[face_grp_ix[ix1]][0],
+					       under_sf_[face_grp_ix[ix1]]);
+		    }
+		  else
+		    {
+		      // Create plane through the most distant position
+		      Point pos = distant_pos[ix2] + 0.5*(maxd-mind)*dir;
+		      shared_ptr<Plane> plane(new Plane(pos, dir));
+
+		      // Must set some bound
+		      Point diag = bbox_[face_grp_ix[ix2]].high() - 
+			bbox_[face_grp_ix[ix2]].low();
+		      double len = diag.length();
+		      plane->setParameterBounds(-len, -len, len, len);
+		      side_sf = std::make_pair(dummy_face, plane);
+		    }
+		}
 	    }
 	}
     }
@@ -1024,58 +1098,76 @@ CreateTrimVolume::checkCandPair(Point vec,
 
   double frac = 0.2;
 
-  if (elem1 && elem2)
+  double rad1, rad2;
+  Point dir1, dir2;
+  Point loc1, loc2;
+  if (elem1)
     {
       double rad1 = elem1->radius(u1, v1);
-      double rad2 = elem2->radius(u2, v2);
       if (elem1->instanceType() == Class_Plane)
 	rad1 = 0.0;  // The location lies in the plane
-      if (elem2->instanceType() == Class_Plane)
-	rad2 = 0.0;
       
-      Point dir1 = elem1->direction();
-      Point dir2 = elem2->direction();
-      Point loc1 = elem1->location();
-      Point loc2 = elem2->location();
-
-      Point v0 = loc2-loc1;
-      Point v1 = (v0*dir2)*dir2;
-      Point v2 = (v0*dir1)*dir1;
-      double d1 = (v0 - v1).length();
-      double d2 = (v0 - v2).length();
-
-      double d1_2 = d1 + rad1;
-      double d2_2 = d2 + rad2;
-
-      // Check if the surface has approximately the same distance from the
-      // identified axis
-      Point diff = sf_pt1-sf_pt2;
-      if (fabs(d1_2 - d2_2) < frac*d1_2)
-	return (diff*vec > 0.0) ? 1 : 2;
-      else 
-	{
-	  // Find the most extreme surface in the outward direction
-	  if (elem1->instanceType() == Class_Plane ||
-	      elem2->instanceType() == Class_Plane)
-	    {
-	      double x1 = bpt1*vec;
-	      double x2 = bpt2*vec;
-	      return (x1 >= x2) ? 3 : 4;
-	    }
-	  else
-	    {
-	      Point diff = sf_pt1-sf_pt2;
-	      if (diff*vec > 0.0)
-		return 3;  // The initially selected surface is the best boundary surface
-	      else
-		return 4;  // The new surface is better
-	    }
-	}
+      dir1 = elem1->direction();
+      loc1 = elem1->location();
     }
   else
     {
-      MESSAGE("At most one elementary surface is found");
+      rad1 = 0.0;
+      loc1 = sf_pt1;
+      
+      sf1->normal(dir1, u1, v1);
     }
+
+  if (elem2)
+    {
+      rad2 = elem2->radius(u2, v2);
+      if (elem2->instanceType() == Class_Plane)
+	rad2 = 0.0;
+      dir2 = elem2->direction();
+      loc2 = elem2->location();
+    }
+  else
+    {
+      rad2 = 0.0;
+      loc2 = sf_pt2;
+      
+      sf2->normal(dir2, u2, v2);
+      
+    }
+
+  Point vv0 = loc2-loc1;
+  Point vv1 = (vv0*dir2)*dir2;
+  Point vv2 = (vv0*dir1)*dir1;
+  double dd1 = (vv0 - vv1).length();
+  double dd2 = (vv0 - vv2).length();
+  
+  double d1_2 = dd1 + rad1;
+  double d2_2 = dd2 + rad2;
+
+  // Check if the surface has approximately the same distance from the
+  // identified axis
+  Point diff = sf_pt1-sf_pt2;
+  if (fabs(d1_2 - d2_2) < frac*d1_2)
+    return (diff*vec > 0.0) ? 1 : 2;
+  else 
+    {
+      // Find the most extreme surface in the outward direction
+      if (bd_type1 == 2)
+	{
+	  Point diff = sf_pt1-sf_pt2;
+	  if (diff*vec > 0.0)
+	    return 3;  // The initially selected surface is the best boundary surface
+	  else
+	    return 4;  // The new surface is better
+	}
+      else
+	{
+	  double x1 = bpt1*vec;
+	  double x2 = bpt2*vec;
+	  return (x1 >= x2) ? 3 : 4;
+	}
+    }
+  
   return 0;
 }
 
