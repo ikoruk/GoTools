@@ -54,6 +54,7 @@
 #include "GoTools/compositemodel/IntResultsSfModel.h"
 #include "GoTools/topology/FaceAdjacency.h"
 #include "GoTools/topology/FaceConnectivityUtils.h"
+#include "GoTools/compositemodel/SurfaceModelUtils.h"
 #include <fstream>
 
 
@@ -1785,135 +1786,29 @@ void SurfaceModel::localIntersect(const ftLine& line,
 				  vector<ftCurveSegment>& line_segments) const
 //===========================================================================
 {
-  // Convert the surface to a SISLSurf in order to use SISL functions
-  // on it. The "false" argument dictates that the SISLSurf will only    
-  // copy pointers to arrays, not the arrays themselves.
-    shared_ptr<ParamSurface> parsurf = sf->surface();
-    SplineSurface* splinesf = parsurf->getSplineSurface();
-    const CurveBoundedDomain* bdomain = 0;
-    shared_ptr<BoundedSurface> bsurf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(parsurf);
-    if (bsurf.get())
-      bdomain = &(bsurf->parameterDomain());
-    // shared_ptr<SplineSurface> surf;
-    // if (parsurf->instanceType() == Class_SplineSurface)
-    // 	surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(parsurf);
-    // else
-    // {
-    // 	shared_ptr<BoundedSurface> bsurf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(parsurf);
-    // 	if (bsurf.get())
-    // 	    surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(bsurf->underlyingSurface());
-    // }
-  //   = dynamic_cast<SplineSurface*>(sf->surface().get());
-  // const CurveBoundedDomain* bdomain = 0;
-  // if (splinesf == 0) {
-  //   BoundedSurface* bs
-  //     = dynamic_cast<BoundedSurface*>(sf->surface().get());
-  //   if (bs != 0) {
-  //     splinesf
-  // 	= dynamic_cast<SplineSurface*>(bs->underlyingSurface().get());
-  //     bdomain = &(bs->parameterDomain());
-  //   } else {
-  //     THROW("You cannot intersect this class of surface: "
-  // 	    << sf->surface()->instanceType());
-  //   }
-  // }
-  ASSERT(splinesf != 0);
-
-  SISLSurf* sislsf = GoSurf2SISL(*splinesf, false);
-  int dim = 3;
-  double epsco = 1e-15; // Not used
-  double epsge = 1e-6;
-  int numintpt;  // number of single intersection points
-  double* pointpar = 0; // array containing the parameter values of single intersect. pt.
-  int numintcr; // number of intersection curves
-  SISLIntcurve** intcurves = 0;
-  int stat;
-  Point pnt = line.point();
-  Point dir = line.direction();
-  // Find the intersection points
-  s1856(sislsf, pnt.begin(), dir.begin(), dim, epsco, epsge,
-	&numintpt, &pointpar, &numintcr, &intcurves, &stat);
-  MESSAGE_IF(stat!=0, "s1856 returned code: " << stat);
-
-  int i;
-  for (i = 0; i < numintpt; ++i)
+  shared_ptr<ParamSurface> parsurf = sf->surface();
+  vector<pair<Point,Point> > int_pt;
+  vector<pair<shared_ptr<ParamCurve>, shared_ptr<ParamCurve> > > line_seg;
+  SurfaceModelUtils::intersectLine(parsurf, line.point(), line.direction(), 
+				   toptol_.gap, int_pt, line_seg);
+  for (size_t ki=0; ki<int_pt.size(); ++ki)
     {
-      double u = pointpar [i<<1];
-      double v = pointpar [i<<1 | 1];
-      Point pt = sf -> point(u, v);
-
-      bool in_domain = true;
-      if (bdomain != 0)
-	{
-	  // Check if the point is inside the trimmed surface
-	  Array<double,2> tmp_pt(u,v);
-	  in_domain = bdomain->isInDomain(tmp_pt, epsge);
-	  
-	}
-      if (in_domain)
-	result.push_back(ftPoint(pt, sf, u, v));
+      result.push_back(ftPoint(int_pt[ki].first, sf,
+			       int_pt[ki].second[0], int_pt[ki].second[1]));
     }
-
-  for (i=0; i<numintcr; i++)
-  {
-      // Evaluate endpoints of line segment and make geometry curve
-      int npt = intcurves[i]->ipoint;
-      Point pt1 = sf->point(intcurves[i]->epar1[0],intcurves[i]->epar1[1]);
-      Point pt2 = sf->point(intcurves[i]->epar1[2*(npt-1)],intcurves[i]->epar1[2*(npt-1)+1]);
-      SplineCurve *gcv = new SplineCurve(pt1, pt2);
-
-      // Project the curve into the parameter space of the surface
-      shared_ptr<Point> pt1_2D = shared_ptr<Point>(new Point(intcurves[i]->epar1[0],intcurves[i]->epar1[1]));
-      shared_ptr<Point> pt2_2D = shared_ptr<Point>(new Point(intcurves[i]->epar1[2*(npt-1)],intcurves[i]->epar1[2*(npt-1)+1]));
-      shared_ptr<ParamCurve> gcv2 = shared_ptr<ParamCurve>(gcv->clone());
-      double tol = approxtol_;
-      SplineCurve *pcv = CurveCreators::projectSpaceCurve(gcv2, parsurf, 
-							  pt1_2D, pt2_2D, tol);
-      
- 	vector<SplineCurve*> final_param_curves;
-	vector<SplineCurve*> final_space_curves;
-	if (bdomain != 0) {
-	    // the surface was trimmed.  We must check for intersections with
-	    // trimming curves
-	    vector<double> params_start_end;
-	    bdomain->findPcurveInsideSegments(*pcv, 
-					      toptol_.gap, //@ other tolerance here???
-					      params_start_end);
-	    int num_segments = (int)params_start_end.size() / 2;
-	    //cout << "Num segments found: " << num_segments << endl;
-
-	    for (int j = 0; j < num_segments; ++j) {
-		SplineCurve* pcv_sub = pcv->subCurve(params_start_end[2 * j],
-						     params_start_end[2 * j + 1]);
-		final_param_curves.push_back(pcv_sub->clone());
-		final_space_curves.push_back(0); //@ change this? (not necessary)
-		delete pcv_sub;
-	    }
-	    // deleting curves that will not be directly used later
-	    delete(gcv);
-	    delete(pcv);
-	} else {
-	    final_param_curves.push_back(pcv);
-	    final_space_curves.push_back(gcv);
-	}
-
-	// pushing back segments
-	for (size_t j = 0; j < final_space_curves.size(); ++j) {
-	    ftCurveSegment seg(CURVE_INTERSECTION, 
-			       JOINT_DISC, 
-			       sf,  // underlying surface
-			       0,   // second underlying surface (null)
-			       shared_ptr<ParamCurve>(final_param_curves[j]),
-			       shared_ptr<ParamCurve>(), // second parameter curve (null)
-			       shared_ptr<ParamCurve>(final_space_curves[j]));
-	    line_segments.push_back(seg);
-	}
+  for (size_t ki=0; ki<line_seg.size(); ++ki)
+    {
+      ftCurveSegment seg(CURVE_INTERSECTION, 
+			 JOINT_DISC, 
+			 sf,  // underlying surface
+			 0,   // second underlying surface (null)
+			 line_seg[ki].first,
+			 shared_ptr<ParamCurve>(), // second parameter curve (null)
+			 line_seg[ki].second);
+      line_segments.push_back(seg);
     }
-
-  free(pointpar);
-  freeIntcrvlist(intcurves, numintcr);
-  freeSurf(sislsf);
 }
+
 
 //===========================================================================
 void SurfaceModel::localIntersect(shared_ptr<SplineCurve> crv,
@@ -2329,207 +2224,13 @@ SurfaceModel::localExtreme(ftSurface *face, Point& dir,
 //===========================================================================
 {
   int id = face->getId();
-  double tol2d = 1.0e-4;
 
-  // Convert the surface to a SISLSurf in order to use SISL functions
-  // on it. The "false" argument dictates that the SISLSurf will only    
-  // copy pointers to arrays, not the arrays themselves.
-    shared_ptr<ParamSurface> parsurf = face->surface();
-    shared_ptr<SplineSurface> surf;
-    shared_ptr<BoundedSurface> bsurf;
-    const CurveBoundedDomain* bddomain = 0;
-    if (parsurf->instanceType() == Class_SplineSurface)
-	surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(parsurf);
-    else
-    {
-	bsurf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(parsurf);
-	if (bsurf.get())
-	  {
-	    while (bsurf->underlyingSurface()->instanceType() == 
-		   Class_BoundedSurface)
-	      bsurf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(bsurf->underlyingSurface());	    
-	    RectDomain domain = bsurf->containingDomain();
-	    surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(bsurf->underlyingSurface());
-	    ASSERT(surf.get() != 0);
-	    if (bsurf->isIsoTrimmed(tol2d))
-	      {
-		RectDomain dom2 = surf->containingDomain();  // To avoid problems due to numerics
-		double umin = std::max(domain.umin(), dom2.umin());
-		double umax = std::min(domain.umax(), dom2.umax());
-		double vmin = std::max(domain.vmin(), dom2.vmin());
-		double vmax = std::min(domain.vmax(), dom2.vmax());
-    
-		vector<shared_ptr<ParamSurface> > sfs = surf->subSurfaces(umin, vmin, umax, vmax);
-		surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(sfs[0]);
-	      }
-	    else
-	      bddomain = &(bsurf->parameterDomain());
-	  }
+  shared_ptr<ParamSurface> surface = face->surface();
+  bool modified = SurfaceModelUtils::extremalPoint(surface, dir, toptol_,
+						   ext_pnt, ext_par);
 
-	// Make the smallest possible underlying surface
-    }
-  ASSERT(surf.get() != 0);
-
-  SISLSurf* sislsf = GoSurf2SISL(*(surf.get()), false);
-  double epsge = 1.0e-6;
-  int numintpt;  // number of single extremal points
-  double* pointpar = 0; // array containing the parameter values of single extremal. pt.
-  int numintcr; // number of extremal curves
-  SISLIntcurve** intcurves = 0;
-  int stat = 0;
-
-  s1921(sislsf, dir.begin(), dir.dimension(), 0.0, epsge, 
-	&numintpt, &pointpar, &numintcr, &intcurves, &stat);
-  MESSAGE_IF(stat!=0, "s1921 returned code: " << stat); 
-
-  // Check if any of the found extremal points are better than the
-  // current most extreme point
-  vector<Point> curr_pnt;
-  vector<double> curr_par;
-  int ki;
-  for (ki=0; ki<numintpt; ++ki)
-    {
-      // Evaluate surface
-      Point pos = surf->ParamSurface::point(pointpar[2*ki],pointpar[2*ki+1]);
-      if (ext_id < 0 || pos*dir > ext_pnt*dir)
-	{
-	  curr_pnt.push_back(pos);
-	  curr_par.insert(curr_par.end(), pointpar+2*ki, pointpar+2*(ki+1));
-	}
-    }
-
-  for (ki=0; ki<numintcr; ++ki)
-    {
-      Point pos = surf->ParamSurface::point(intcurves[ki]->epar1[0],
-					    intcurves[ki]->epar1[1]);
-      if (ext_id < 0 || pos*dir > ext_pnt*dir)
-	{
-	  curr_pnt.push_back(pos);
-	  curr_par.insert(curr_par.end(), intcurves[ki]->epar1, 
-			  intcurves[ki]->epar1+2);
-	}
-
-      double *pp = intcurves[ki]->epar1 + 2*(intcurves[ki]->ipoint-1);
-      pos = surf->ParamSurface::point(pp[0], pp[1]);
-      if (ext_id < 0 || pos*dir > ext_pnt*dir)
-	{
-	  curr_pnt.push_back(pos);
-	  curr_par.insert(curr_par.end(), pp, pp+2);
-	}
-    }
-
-  if (curr_pnt.size() == 0)
-    {
-      // No better extremal point is found. 
-      return;
-    }
-
-  if (bddomain != 0)
-    {
-      // The surface was trimmed
-      // Remove extremal points which are outside the domain
-      for (ki=0; ki<(int)curr_pnt.size(); ++ki)
-	{
-	  Vector2D param(curr_par[2*ki], curr_par[2*ki+1]);
-	  if (!bddomain->isInDomain(param, epsge))
-	    {
-	      curr_pnt.erase(curr_pnt.begin()+ki);
-	      curr_par.erase(curr_par.begin()+2*ki, curr_par.begin()+2*(ki+1));
-	    }
-	}
-    }
-
-  if (curr_pnt.size() > 0)
-    {
-      //  Fetch the best extremal point
-      ext_id = id;
-      ext_pnt = curr_pnt[0];
-      ext_par[0] = curr_par[0];
-      ext_par[1] = curr_par[1];
-      for (ki=1; ki<(int)curr_pnt.size(); ++ki)
-	{
-	  if (curr_pnt[ki]*dir > ext_pnt*dir)
-	    {
-	      ext_pnt = curr_pnt[ki];
-	      ext_par[0] = curr_par[2*ki];
-	      ext_par[1] = curr_par[2*ki+1];
- 	    }
-	}
-    }  
-
-  else if (bddomain != 0)
-    {
-      // It can be an extremal point inside the face that is better than
-      // the previous one.
-      // First get the extreme points on the boundary
-      vector<CurveLoop> bd_loops = bsurf->allBoundaryLoops();
-      for (ki=0; ki<(int)bd_loops.size(); ++ki)
-	{
-	  vector<shared_ptr<ParamCurve> > curr_loop(bd_loops[ki].begin(),
-						    bd_loops[ki].end());
-	  shared_ptr<CompositeCurve> comp_cv = 
-	    shared_ptr<CompositeCurve>(new CompositeCurve(toptol_.gap,
-							  toptol_.neighbour,
-							  toptol_.kink,
-							  toptol_.bend,
-							  curr_loop));
-				       
-	  int idx;
-	  Point bd_ext;
-	  double bd_par;
-	  comp_cv->extremalPoint(dir, bd_ext, idx, &bd_par);
-	  if (ext_id < 0 || bd_ext*dir > ext_pnt*dir)
-	    {
-	      ext_id = id;
-	      ext_pnt = bd_ext;
-	      Point param = bsurf->getSurfaceParameter(ki, idx, bd_par);
-	      ext_par[0] = param[0];
-	      ext_par[1] = param[1];
-	    }
-	}
-	      
-
-      // Triangulate trimmed surface
-      int n, m;
-      double density = 1.0;
-      int min_nmb = 4, max_nmb = 50;
-      setResolutionFromDensity(parsurf, density, min_nmb, max_nmb, n, m);
-
-      shared_ptr<GeneralMesh> mesh;
-      tesselateOneSrf(parsurf, mesh, n, m);
-
-      // Get the most extreme triangulation nodes
-      double *nodes = mesh->vertexArray();
-      // int nmb_nodes = mesh->numVertices();
-      int num_triang = mesh->numTriangles();
-      double *par_nodes = mesh->paramArray();
-      unsigned int *triang_idx = mesh->triangleIndexArray();
-      for (ki=0; ki<num_triang; ++ki)
-	{
-	  // Due to the structure of the tesselation, the points must
-	  // be handled more than once
-	  for (int kj=0; kj<3; ++kj)
-	    {
-	      Point node_ext(nodes+triang_idx[ki+kj], 
-			     nodes+triang_idx[ki+kj]+3, false);
-	      if (ext_id < 0 || node_ext*dir > ext_pnt*dir)
-		{
-		  ext_id = id;
-		  ext_pnt = node_ext;
-		  ext_par[0] = par_nodes[2*ki];
-		  ext_par[1] = par_nodes[2*ki+1];
-		}
-	    }
-	}
-
-      // Use this value as a start point for an extreme point iteration
-
-    }
-  else
-    {
-      // No better extremal point is found
-      return;
-    }
+  if (modified)
+    ext_id = id;
 }
 
 // //===========================================================================

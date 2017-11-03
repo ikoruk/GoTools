@@ -888,19 +888,10 @@ class GO_API SurfaceModel : public CompositeModel
 		    Point& ext_pnt, int& ext_id,
 		    double ext_par[]);
 
-  void tesselateOneSrf(shared_ptr<ParamSurface> surf,
-		       shared_ptr<GeneralMesh>& mesh,
-		       int n=20, int m=20) const;
-
   void meshToTriang(shared_ptr<ftSurface> face,
 		    shared_ptr<GeneralMesh> mesh,
 		    int n, int m, shared_ptr<ftPointSet> triang,
 		    bool check_endpoint_identity = false) const;
-
-  void setResolutionFromDensity(shared_ptr<ParamSurface> surf,
-				double density,
-				int min_nmb, int max_nmb,
-				int& u_res, int& v_res) const;
 
   void 
     getCurrConnectedModel(shared_ptr<ftSurface>& face,

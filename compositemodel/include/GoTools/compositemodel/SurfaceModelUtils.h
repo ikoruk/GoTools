@@ -42,6 +42,9 @@
 
 #include "GoTools/geometry/ParamSurface.h"
 #include "GoTools/compositemodel/Vertex.h"
+#include "GoTools/topology/tpTolerances.h"
+#include "GoTools/tesselator/GeneralMesh.h"
+#include "GoTools/geometry/Line.h"
 
 namespace Go
 {
@@ -79,8 +82,8 @@ namespace Go
     /// Merge surfaces into larger one when possible
     void simplifySurfaceModel(shared_ptr<SurfaceModel>& model, int degree);
 
-    /// Check if the surfaces corresponding to face1 and fac2 can be merged into
-    /// one larger surface
+    /// Check if the surfaces corresponding to face1 and face2 can be merged 
+    /// into one larger surface
     int mergeSituation(ftSurface* face1, ftSurface* face2,
 		       shared_ptr<Vertex> vx1, shared_ptr<Vertex> vx2,
 		       int& dir1, double& val1, bool& atstart1, 
@@ -112,6 +115,29 @@ namespace Go
 			     std::vector<bool>& at_bd2,
 			     Body *model2, double eps, double angtol,
 			     std::vector<std::vector<shared_ptr<ParamSurface> > >& groups);
+
+    /// Intersect surface with a line
+    void
+      intersectLine(shared_ptr<ParamSurface>& surface,
+		    Point pnt, Point dir, double tol,
+		    std::vector<std::pair<Point,Point> >& result,
+		    std::vector<std::pair<shared_ptr<ParamCurve>, 
+		    shared_ptr<ParamCurve> > >& line_seg);
+
+    /// Compute extremal point in a given direction
+    bool extremalPoint(shared_ptr<ParamSurface>& surface, Point dir, 
+		       tpTolerances& toptol, Point& ext_pnt, 
+		       double ext_par[]);
+
+    void setResolutionFromDensity(shared_ptr<ParamSurface> surf,
+				  double density, double tol2d,
+				  int min_nmb, int max_nmb,
+				  int& u_res, int& v_res);
+
+    void tesselateOneSrf(shared_ptr<ParamSurface> surf,
+			 shared_ptr<GeneralMesh>& mesh,
+			 double tol2d, int n=20, int m=20);
+
   }
 }
 #endif

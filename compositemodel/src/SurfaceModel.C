@@ -1744,7 +1744,7 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 
 	shared_ptr<GeneralMesh> mesh;
 	try {
-	  tesselateOneSrf(surf, mesh, u_res, v_res);
+	  SurfaceModelUtils::tesselateOneSrf(surf, mesh, tol2d_, u_res, v_res);
 	}
 	catch (...)
 	  {
@@ -1780,7 +1780,8 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 
 	shared_ptr<GeneralMesh> mesh;
 	try {
-	  tesselateOneSrf(surf, mesh, resolution[0], resolution[1]);
+	  SurfaceModelUtils::tesselateOneSrf(surf, mesh, tol2d_, 
+					     resolution[0], resolution[1]);
 	}
 	catch (...)
 	  {
@@ -1821,11 +1822,13 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 	shared_ptr<ParamSurface> surf = faces[ki]->surface();
 
 	// Get resolution
-	setResolutionFromDensity(surf, density, min_nmb, max_nmb, u_res, v_res);
+	SurfaceModelUtils::setResolutionFromDensity(surf, density, min_nmb, 
+						    max_nmb, tol2d_, 
+						    u_res, v_res);
 
 	shared_ptr<GeneralMesh> mesh;
 	try {
-	  tesselateOneSrf(surf, mesh, u_res, v_res);
+	  SurfaceModelUtils::tesselateOneSrf(surf, mesh, tol2d_, u_res, v_res);
 	}
 	catch (...)
 	  {
@@ -1861,12 +1864,13 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 	shared_ptr<ParamSurface> surf = curr_face->surface();
 
 	// Get resolution
-	setResolutionFromDensity(surf, density, min_nmb, max_nmb, n, m);
+	SurfaceModelUtils::setResolutionFromDensity(surf, density, tol2d_,
+						    min_nmb, max_nmb, n, m);
 
 	// Make a mesh describing the surface
 	shared_ptr<GeneralMesh> mesh;
 	try {
-	  tesselateOneSrf(surf, mesh, n, m);
+	  SurfaceModelUtils::tesselateOneSrf(surf, mesh, tol2d_, n, m);
 	}
 	catch (...)
 	  {
@@ -1956,52 +1960,6 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
   }
 
   //===========================================================================
-  void SurfaceModel::tesselateOneSrf(shared_ptr<ParamSurface> surf,
-				     shared_ptr<GeneralMesh>& mesh,
-				     int n, int m) const
-  //===========================================================================
-  {
-      ClassType type = surf->instanceType();
-      if (type == Class_SplineSurface)
-      {
-	  RectangularSurfaceTesselator tesselator(*surf.get(), n, m);
-	  tesselator.tesselate();
-	  mesh = tesselator.getMesh();
-      }
-      else if (type == Class_BoundedSurface)
-      {
-	  shared_ptr<BoundedSurface> bd_surf = 
-	      dynamic_pointer_cast<BoundedSurface, ParamSurface>(surf);
-	  if (bd_surf->isIsoTrimmed(tol2d_))
-	  {
-	      // Get surrounding domain
-	      RectDomain domain = bd_surf->containingDomain();
-    
-	      // Get smallest surrounding surface
-	      shared_ptr<ParamSurface> base_sf = bd_surf->underlyingSurface();
-	      while (base_sf->instanceType() == Class_BoundedSurface)
-		  base_sf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(base_sf)->underlyingSurface();
-	      RectDomain dom2 = base_sf->containingDomain();  // To avoid problems due to numerics
-	      double umin = std::max(domain.umin(), dom2.umin());
-	      double umax = std::min(domain.umax(), dom2.umax());
-	      double vmin = std::max(domain.vmin(), dom2.vmin());
-	      double vmax = std::min(domain.vmax(), dom2.vmax());
-    
-	      vector<shared_ptr<ParamSurface> > sfs = base_sf->subSurfaces(umin, vmin, umax, vmax);
-	      RectangularSurfaceTesselator tesselator(*(sfs[0].get()), n, m, false);
-	      tesselator.tesselate();
-	      mesh = tesselator.getMesh();
-	  }
-	  else
-	  {
-	      ParametricSurfaceTesselator tesselator(*surf.get());
-	      tesselator.changeRes(n, m);
-	      mesh = tesselator.getMesh();
-	  }
-      }
-  }
-
-  //===========================================================================
   void SurfaceModel::tesselatedCtrPolygon(vector<shared_ptr<LineCloud> >& ctr_pol) const
   //===========================================================================
   {
@@ -2020,48 +1978,6 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
       }
   }
 
-  //===========================================================================
-  void SurfaceModel::setResolutionFromDensity(shared_ptr<ParamSurface> surf,
-					      double density,
-					      int min_nmb, int max_nmb,
-					      int& u_res, int& v_res) const
-  //===========================================================================
-  {
-	// Estimate size of surface/underlying surface
-    shared_ptr<ParamSurface> sf;
-    shared_ptr<BoundedSurface> bd_surf = 
-      dynamic_pointer_cast<BoundedSurface, ParamSurface>(surf);
-    if (bd_surf.get())
-      {
-	// A trimmed surface is found
-	// Get underlying surface 
-	sf = bd_surf->underlyingSurface();
-	if (bd_surf->isIsoTrimmed(tol2d_))
-	  {
-	    RectDomain domain = bd_surf->containingDomain();
-	    RectDomain dom2 = sf->containingDomain();
-	    double umin = std::max(domain.umin(), dom2.umin());
-	    double umax = std::min(domain.umax(), dom2.umax());
-	    double vmin = std::max(domain.vmin(), dom2.vmin());
-	    double vmax = std::min(domain.vmax(), dom2.vmax());
-    
-	    vector<shared_ptr<ParamSurface> > sfs = sf->subSurfaces(umin, vmin, umax, vmax);
-	    sf = sfs[0];
-	  }
-      }
-    else 
-      sf = surf;
-	
-    double len_u, len_v;
-    GeometryTools::estimateSurfaceSize(*sf, len_u, len_v);
-
-    u_res = (int)(len_u/density);
-    v_res = (int)(len_v/density);
-    double fac = len_u/len_v;
-    u_res = std::max(min_nmb, std::min(u_res, (int)(fac*max_nmb)));
-    v_res = std::max(min_nmb, std::min(v_res, (int)(max_nmb/fac)));
-
-  }
 
   //===========================================================================
   void SurfaceModel::meshToTriang(shared_ptr<ftSurface> face,
@@ -2130,8 +2046,9 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 
 	// Fetch number of sampling points
 	int nmb_u, nmb_v;
-	setResolutionFromDensity(curr->surface(), density, 
-				 min_nmb, max_nmb, nmb_u, nmb_v);
+	SurfaceModelUtils::setResolutionFromDensity(curr->surface(), density, 
+						    tol2d_, min_nmb, max_nmb, 
+						    nmb_u, nmb_v);
 
 	// Sample face boundaries
 	FaceUtilities::getBoundaryData(curr, 2*(nmb_u+nmb_v),
