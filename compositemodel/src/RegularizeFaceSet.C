@@ -51,7 +51,7 @@
 #include <fstream>
 #include <cstdlib>
 
-//#define DEBUG_REG
+#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -264,12 +264,16 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   // Special case treatment providing prioritized vertices for split
   defineSplitVx(faces, allow_deg, other_face, perm);
   
+  // for (kj=0; kj<(int)perm.size(); ++kj)
+  //   std::cout << perm[kj] << " ";
+  // std::cout << std::endl;
+
 #ifdef DEBUG_REG
       std::ofstream of0("all_post_regface.g2");
 #endif
       // Storage of regularized faces
       vector<shared_ptr<ftSurface> > reg_faces;
-  for (int kj=0; kj<nmb_faces; ++kj)
+      for (kj=0; kj<nmb_faces; ++kj)
     {
       vector<shared_ptr<Vertex> > pre_vx1;
       model_->getAllVertices(pre_vx1);
@@ -2384,8 +2388,15 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	  curr_face->getAdjacentFaces(adj_faces);
 	  edgs = curr_face->getAllEdges();
 	}
+
+      DirectionCone cone;
+      if (nmb_found == 1)
+	cone = curr_face->surface()->normalCone();
       if (nmb_found == 1 && curr_face->nmbBoundaryLoops() == 1 &&
-	  (curr_nmb_corner == 3 || curr_nmb_corner == 5))
+	  (curr_nmb_corner == 3 || curr_nmb_corner == 5 ||
+	   (curr_nmb_corner == 6 && 
+	    (cone.greaterThanPi() == 1 ||
+	     cone.angle() > model_->getTolerances().bend))))
 	{
 	  // Special case found. Define new vertex to guide splitting
 	  // Select edge and associated face
@@ -2439,7 +2450,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
  	    }
 	  
 	  int ix1 = -1;
-	  if (edgs.size() == 3)
+	  if (edgs.size() == 3 && curr_nmb_corner <= 5)
 	    {
 	      // Select a long edge where the tangent at an end vertex is less perpendicular to
 	      // the tangent of the adjacent edge
@@ -2480,7 +2491,8 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		  shared_ptr<SplineCurve> cv2(cv->subCurve(t1, t2));
 		  double mincur;
 		  Point dir;
-		  bool linear = cv2->isLinear(dir, model_->getTolerances().kink);
+		  bool linear = 
+		    cv2->isLinear(dir, model_->getTolerances().bend); //model_->getTolerances().kink);
 		  bool found;
 		  if (linear)
 		    found = false;
@@ -2637,6 +2649,37 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		split_par[1] = par2;
 	    }
 
+	  if (split_edgs.size() > 0)
+	    {
+	      // Sort edges to get better sequence of faces for
+	      // regularization
+	      // Compute distance between identified splitting vertex and
+	      // closest point on opposite edge
+	      vector<double> split_dist(split_edgs.size());
+	      for (size_t kr=0; kr<split_edgs.size(); ++kr)
+		{
+		  double dist, par;
+		  Point close;
+
+		  Point pnt = split_edgs[kr]->point(split_par[kr]);
+		  ftEdge* edg = 
+		    RegularizeUtils::getClosestOpposite(split_faces[kr], 
+							split_edgs[kr]->twin(), 
+							pnt, close, par, dist);
+		  split_dist[kr] = dist;
+		}
+
+	      for (size_t kr=0; kr<split_edgs.size(); ++kr)
+		for (size_t kh=kr+1; kh<split_edgs.size(); ++kh)
+		  if (split_dist[kh] < split_dist[kr])
+		    {
+		      std::swap(split_dist[kr], split_dist[kh]);
+		      std::swap(split_edgs[kr], split_edgs[kh]);
+		      std::swap(split_faces[kr], split_faces[kh]);
+		      std::swap(split_par[kr], split_par[kh]);
+		    }
+	    }
+
 	  // Do the splitting
 	  for (size_t kr=0; kr<split_edgs.size(); ++kr)
 	    {
@@ -2665,7 +2708,32 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	      vx_pri_.push_back(make_pair(vx, perm[ix2++]));
 	    }
 
-	  // Reprioritize the non-corresponding face
+	  if (split_faces.size() == 1)
+	    {
+	      // Downprioritize opposite face
+	      for (size_t kj=0; kj<corr_faces_.size(); ++kj)
+		{
+		  int other_ix = -1;
+		  if (corr_faces_[kj].first == perm[ix2-1])
+		    other_ix = corr_faces_[kj].second;
+		  else if (corr_faces_[kj].second == perm[ix2-1])
+		    other_ix = corr_faces_[kj].first;
+		  if (other_ix >= 0)
+		    {
+		      for (int ki=ix2; ki<(int)perm.size(); ++ki)
+			{
+			  if (perm[ki] == other_ix)
+			    {
+			      perm.push_back(perm[ki]);
+			      perm.erase(perm.begin()+ki);
+			      break;
+			    }
+			}
+		    }
+		}
+	    }
+
+	  // Downprioritize the non-corresponding face
 	  for (int ki=0; ki<(int)perm.size(); ++ki)
 	    {
 	      if (curr_face.get() == faces[perm[ki]].get())
@@ -3089,7 +3157,7 @@ RegularizeFaceSet::reRegularizeFaces(vector<shared_ptr<ftSurface> >& faces)
       // Identify split vertices that didn't work and  extract vertex 
       // positions since vertex instances may change during processing
       vector<vector<Point> > split_pt;
-      for (kj=1; kj<same_sf.size(); ++kj)
+      for (kj=1; kj<same_sf[ki].size(); ++kj)
 	{
 	  vector<shared_ptr<Vertex> > split_vx = 
 	    same_sf[ki][0]->getCommonVertices(same_sf[ki][kj].get());

@@ -124,6 +124,12 @@ namespace Go
       checkIntCrvJoint(std::vector<shared_ptr<CurveOnSurface> > & int_cvs,
 		       double tol, double eps);
 
+    void checkIntCvCoincidence(shared_ptr<CurveOnSurface> *project_cvs,
+			       int nmb_project_cvs,
+			       double tol, double eps,
+			       std::vector<shared_ptr<CurveOnSurface> >& int_cvs1,
+			       std::vector<shared_ptr<CurveOnSurface> >& int_cvs2);
+
   }  // namespace ftVolumeTools
 } // namespace Go
 

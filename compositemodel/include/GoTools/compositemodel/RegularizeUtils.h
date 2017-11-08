@@ -94,6 +94,11 @@ namespace Go {
 			    double epsge,
 			    int& close_idx, double& close_dist,
 			    Point& close_par, int loop_idx=-1);
+
+    ftEdge*
+      getClosestOpposite(ftSurface* face, ftEdgeBase* edge, Point pnt,
+			 Point& close, double& par, double& dist);
+
     bool
       cornerInShortestPath(shared_ptr<Vertex> vx1,
 			   shared_ptr<Vertex> vx2,

@@ -929,6 +929,46 @@ RegularizeUtils::getClosestBoundaryPar(shared_ptr<ftSurface> face,
 
 
 //==========================================================================
+ftEdge*
+RegularizeUtils::getClosestOpposite(ftSurface* face, ftEdgeBase* edge, 
+				    Point pnt, Point& close, double& par, 
+				    double& dist)
+//==========================================================================
+{
+  // Fetch candidate edges
+  vector<shared_ptr<ftEdge> > all_edges = face->getAllEdges();
+
+  // Remove input edge and the adjacent edges
+  for (size_t ki=0; ki<all_edges.size(); )
+    {
+      if (all_edges[ki].get() == edge ||
+	  all_edges[ki].get() == edge->next() ||
+	  all_edges[ki].get() == edge->prev())
+	all_edges.erase(all_edges.begin()+ki);
+      else
+	++ki;
+    }
+
+  // Perform closest point computation
+  ftEdge *result = NULL;
+  dist = HUGE;
+  for (size_t ki=0; ki<all_edges.size(); ++ki)
+    {
+      double local_par, local_dist;
+      Point local_close;
+      all_edges[ki]->closestPoint(pnt, local_par, local_close, local_dist);
+      if (local_dist < dist)
+	{
+	  dist = local_dist;
+	  par = local_par;
+	  close = local_close;
+	  result = all_edges[ki].get();
+	}
+    }
+  return result;
+}
+
+//==========================================================================
 bool
   RegularizeUtils::checkPath(shared_ptr<Vertex> vx1, shared_ptr<Vertex> vx2,
 			     shared_ptr<Vertex> vx, shared_ptr<ftSurface> face,

@@ -44,7 +44,7 @@
 #include <fstream>
 #include <cstdlib>
 
-//#define DEBUG
+#define DEBUG
 
 using std::vector;
 using std::set;

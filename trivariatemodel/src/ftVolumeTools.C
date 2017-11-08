@@ -870,8 +870,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
   vector<shared_ptr<ParamSurface> > sfs2(nmb_trim);
   for (size_t kr=0; kr<nmb_elem; ++kr)
     {
-      // if (sfs1[kr].get())
-      // 	continue;  // Intersection curves already obtained
+      int nmb_project = (int)all_int_cvs1[kr].size();
       
       shared_ptr<ParamSurface> surf1 = elem_faces[kr]->surface();
       BoundingBox box1 = surf1->boundingBox();
@@ -899,6 +898,15 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 						    int_cv2, bd2);
 	      sfs1[kr] = bd1;
 	      sfs2[kh] = bd2;
+	      if (int_cv1.size() > 0 && nmb_project > 0)
+		{
+		  // Remove intersection curves that are coincident with
+		  // already found projection curves
+		  checkIntCvCoincidence(&all_int_cvs1[kr][0], nmb_project,
+					toptol.neighbour, toptol.gap,
+					int_cv1, int_cv2);
+		}
+
 	      if (int_cv1.size() > 0)
 		{
 		  all_int_cvs1[kr].insert(all_int_cvs1[kr].end(), 
@@ -2414,4 +2422,36 @@ ftVolumeTools::checkIntCrvJoint(vector<shared_ptr<CurveOnSurface> > & int_cvs,
     }
 
   return modified;
+}
+
+//===========================================================================
+// 
+// 
+void
+ftVolumeTools::checkIntCvCoincidence(shared_ptr<CurveOnSurface> *project_cvs,
+				     int nmb_project_cvs,
+				     double tol, double eps,
+				     vector<shared_ptr<CurveOnSurface> >& int_cvs1,
+				     vector<shared_ptr<CurveOnSurface> >& int_cvs2)
+//===========================================================================
+{
+  for (int ki=(int)int_cvs1.size()-1; ki>=0; --ki)
+    {
+      // Check if the current intersection curve already is
+      // represented as one or more projection curves
+      vector<double> param;
+      for (int kj=0; kj<nmb_project_cvs; ++kj)
+	{
+	  Identity ident;
+	  int coinc = ident.identicalCvs(int_cvs1[ki], project_cvs[kj], tol);
+	  //int coinc = ident.identicalCvs(int_cvs1[ki], project_cvs[kj], eps);
+	  if (coinc > 0)
+	    {
+	      // This is probably good enough
+	      int_cvs1.erase(int_cvs1.begin()+ki);
+	      int_cvs2.erase(int_cvs2.begin()+ki);
+	      break;
+	    }
+	}
+    }
 }

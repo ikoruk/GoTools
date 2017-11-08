@@ -245,6 +245,11 @@ class RegularizeFace
 		   std::vector<shared_ptr<Vertex> >& Tvx,
 		   std::vector<shared_ptr<Vertex> >& corner);
 
+  std::vector<shared_ptr<ftSurface> > 
+    TjointCandSplit(shared_ptr<ftSurface> face,
+		    std::vector<shared_ptr<Vertex> >& Tvx,
+		    std::vector<shared_ptr<Vertex> >& corner);
+
 void faceWithHoles(std::vector<std::vector<ftEdge*> >& half_holes);
 
   void faceOneHole(std::vector<std::vector<ftEdge*> >& half_holes);

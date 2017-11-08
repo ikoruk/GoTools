@@ -45,7 +45,7 @@
 #include "GoTools/geometry/BoundedSurface.h"
 #include <fstream>
 
-//#define DEBUG
+#define DEBUG
 
 using std::vector;
 using std::make_pair;
@@ -138,7 +138,7 @@ void CompleteEdgeNet::addIdentifiedEdges(vector<pair<Point,Point> >& corr_vx_pts
 	  // the missing edge should connect
 	  // @@@ VSK 012014. This is a case specific test which will fail if the
 	  // model gets complex enough. Wait for a failure.
-	  int idx1, idx2;
+	  int idx1 = kj, idx2 = kr;
 	  identifyVertexConnection(vx, kj, kr, idx1, idx2);
 	  // @@@ VSK 022014. TEST MORE
 	  // if (idx1 < 0 || idx2 < 0)

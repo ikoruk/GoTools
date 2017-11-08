@@ -126,7 +126,7 @@ class Vertex
     std::vector<ftEdge*> getEdges(ftSurface* face);
 
     /// Get the geometrical position associated to this vertex
-    Point getVertexPoint()
+    Point getVertexPoint() const 
 	{
 	    return vertex_point_;
 	}
@@ -202,6 +202,10 @@ class Vertex
     /// the other vertex, if any
     Vertex* getCommonVertex(Vertex* other) const;
 
+    /// Fetch all vertices connected (through an edge) to both this and
+    /// the other vertex
+    std::vector<shared_ptr<Vertex> > getCommonVertices(Vertex* other) const;
+
     /// Get the edge associated with two vertices, if any
     ftEdge* getCommonEdge(Vertex* other) const;
 
@@ -215,6 +219,10 @@ class Vertex
 
     /// Get the edges meeting in this vertex associated with a given face
     std::vector<ftEdge*> getFaceEdges(ftSurface *face) const;
+
+    /// Get the edges meeting in this vertex not associated with a given face
+    /// Only one edge instance in a twin relation is returned
+    std::vector<ftEdge*> getNonFaceEdges(ftSurface *face) const;
 
     /// Check if the vertex is a corner in the given face
     bool isCornerInFace(ftSurface *face, double tol);

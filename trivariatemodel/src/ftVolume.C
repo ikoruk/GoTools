@@ -37,8 +37,8 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-//#define DEBUG_VOL1
-//#define DEBUG
+#define DEBUG_VOL1
+#define DEBUG
 
 #include "GoTools/trivariatemodel/ftVolume.h"
 #include "GoTools/trivariatemodel/ftVolumeTools.h"
@@ -6598,7 +6598,8 @@ void ftVolume::makeSurfacePair(vector<ftEdge*>& loop,
   // First make faces
   face1 = shared_ptr<ftSurface>(new ftSurface(vol_sf1, -1));
   (void)face1->createInitialEdges(/*max_loop_dist < toptol_.gap ?
-				    toptol_.gap :*/ toptol_.neighbour);
+				    toptol_.gap :*/ toptol_.neighbour,
+				    toptol_.bend, true);
   shared_ptr<Loop> loop1 = face1->getBoundaryLoop(0);
 
   // Split the loop at joint points. Find edge index and parameter by
@@ -6614,8 +6615,9 @@ void ftVolume::makeSurfacePair(vector<ftEdge*>& loop,
     }
 
   face2 = shared_ptr<ftSurface>(new ftSurface(vol_sf2, -1));
-  (void)face2->createInitialEdges(max_loop_dist < toptol_.gap ?
-				  toptol_.gap : toptol_.neighbour);
+  (void)face2->createInitialEdges(/*max_loop_dist < toptol_.gap ?
+				    toptol_.gap : */toptol_.neighbour,
+				    toptol_.bend, true);
   shared_ptr<Loop> loop2 = face2->getBoundaryLoop(0);
 
   // Split the loop at joint points. Find edge index and parameter by

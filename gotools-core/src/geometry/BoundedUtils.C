@@ -2841,16 +2841,21 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 	    {
 	      shared_ptr<ParamCurve> tmp_cv = cvs1[ki]->parameterCurve();
 	      cvs1[ki]->unsetParameterCurve();
-	      cvs1[ki]->ensureParCrvExistence(epsge);
-	      DirectionCone cone1 = tmp_cv->directionCone();
-	      DirectionCone cone2 = cvs1[ki]->parameterCurve()->directionCone();
-	      if (cone2.greaterThanPi() ||
-		  (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol))
+	      bool found = cvs1[ki]->ensureParCrvExistence(epsge);
+	      if (!found)
+		cvs1[ki]->setParameterCurve(tmp_cv);
+	      else
 		{
+		  DirectionCone cone1 = tmp_cv->directionCone();
+		  DirectionCone cone2 = cvs1[ki]->parameterCurve()->directionCone();
+		  if (cone2.greaterThanPi() ||
+		      (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol))
+		    {
 #ifdef DEBUG
-		  std::cout << "Check curve" << std::endl;
+		      std::cout << "Check curve" << std::endl;
 #endif
-		  cvs1[ki]->setParameterCurve(tmp_cv);
+		      cvs1[ki]->setParameterCurve(tmp_cv);
+		    }
 		}
 	    }
 	}

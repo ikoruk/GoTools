@@ -396,6 +396,21 @@ namespace Go
   }
 
   //===========================================================================
+  vector<shared_ptr<Vertex> > Vertex::getCommonVertices(Vertex* other) const
+  //===========================================================================
+  {
+    vector<shared_ptr<Vertex> > result;
+    vector<ftEdge*> edges = other->uniqueEdges();
+    for (size_t ki=0; ki<edges.size(); ++ki)
+      {
+	shared_ptr<Vertex> vx = edges[ki]->getOtherVertex(other);
+	if (sameEdge(vx.get()))
+	  result.push_back(vx);
+      }
+    return result;
+  }
+
+  //===========================================================================
   ftEdge* Vertex::getCommonEdge(Vertex* other) const
   //===========================================================================
   {
@@ -455,6 +470,23 @@ namespace Go
 	ftFaceBase *curr = all_edges[ki]->face();
 	if (curr == face)
 	  edges.push_back(all_edges[ki]);
+      }
+    return edges;
+  }
+
+  //===========================================================================
+  vector<ftEdge*> Vertex::getNonFaceEdges(ftSurface *face) const
+  //===========================================================================
+  {
+    vector<ftEdge*> edges;
+    for (size_t kj=0; kj<edges_.size(); kj++)
+      {
+	ftFaceBase *curr1 = edges_[kj].first->face();
+	ftFaceBase *curr2 = NULL;
+	if (edges_[kj].second)
+	  curr2 = edges_[kj].second->face();
+	if (curr1 != face && curr2 != face)
+	  edges.push_back(edges_[kj].first);
       }
     return edges;
   }
@@ -724,7 +756,13 @@ namespace Go
       vector<ftSurface*> faces;
       for (size_t ki=0; ki<edges_.size(); ++ki)
 	{
+	  ftFaceBase *base_face = edges_[ki].first->face();
+	  if (!base_face)
+	    continue;
 	  ftSurface* curr_face = edges_[ki].first->face()->asFtSurface();
+	  if (!curr_face)
+	    continue;
+
 	  size_t kj;
 	  for (kj=0; kj<faces.size(); ++kj)
 	    if (faces[kj] == curr_face)
@@ -753,8 +791,11 @@ namespace Go
       vector<ftSurface*> faces;
       for (size_t ki=0; ki<edges_.size(); ++ki)
 	{
-	  ftSurface* curr_face = edges_[ki].first->face()->asFtSurface();
-	  if (curr_face->getBody() != bd)
+	  ftFaceBase *base_face = edges_[ki].first->face();
+	  if (!base_face)
+	    continue;
+	  ftSurface* curr_face = base_face->asFtSurface();
+	  if (curr_face == NULL || curr_face->getBody() != bd)
 	    continue;
 
 	  size_t kj;

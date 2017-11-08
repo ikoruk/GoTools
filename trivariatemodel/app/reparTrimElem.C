@@ -76,20 +76,21 @@ using std::ofstream;
 
 int main( int argc, char* argv[] )
 {
-  if (argc != 4 && argc != 5 && argc != 6)
+  if (argc != 5 && argc != 6 && argc != 7)
     {
-      cout << "Usage: " << "<infile> " << " <file type> " << "min nmb knot" << "(start index)" << "(stop index)"<< endl;
+      cout << "Usage: " << "<infile> " << " <file type> " << "min nmb knot" << "distribute knots (0/1) " << "(start index)" << "(stop index)"<< endl;
       exit(-1);
     }
   std::string infile(argv[1]);
   int file_type = atoi(argv[2]);
-  int start_ix = 0;
   int min_nmb = atoi(argv[3]);
-  if (argc >= 5)
-    start_ix = atoi(argv[4]);
+  int distribute = atoi(argv[4]);
+  int start_ix = 0;
+  if (argc >= 6)
+    start_ix = atoi(argv[5]);
   int stop_ix = -1;
-  if (argc == 6)
-    stop_ix = atoi(argv[5]);
+  if (argc == 7)
+    stop_ix = atoi(argv[6]);
 
   shared_ptr<ftVolume> curr_vol;
   int degree = 3;
@@ -137,57 +138,56 @@ int main( int argc, char* argv[] )
       filehandler.writeHeader("Test ftVolume", out_file);
       filehandler.writeVolume(curr_vol, out_file);
       filehandler.writeEnd(out_file);
-
-      // Number of elements in underlying volume
-      shared_ptr<SplineVolume> curr_under = 
-	dynamic_pointer_cast<SplineVolume>(curr_vol->getVolume());
-      curr_under->raiseOrder(2, 2, 2);
-      int nn = 8;
-      for (int dir=0; dir<3; ++dir)
-	{
-	  double tstart = curr_under->startparam(dir);
-	  double tend = curr_under->endparam(dir);
-	  double tdel = (tend - tstart)/(double)(nn+1);
-	  vector<double> newknots(nn);
-	  for (int ka=0; ka<nn; ++ka)
-	    newknots[ka] = tstart + (ka+1)*tdel;
-	  curr_under->insertKnot(dir, newknots);
-	}
     }
   else
     {
       VolumeModelFileHandler filehandler;
       curr_vol = filehandler.readVolume(infile.c_str());
-      shared_ptr<SplineVolume> curr_under = 
-	dynamic_pointer_cast<SplineVolume>(curr_vol->getVolume());
-      for (int dir=0; dir<3; ++dir)
-	{
-	  int num_el = curr_under->numElem(dir);
-	  if (num_el < min_nmb)
-	    {
-	      double tstart =  curr_under->startparam(dir);
-	      double tend =  curr_under->endparam(dir);
-	      double del1 = (tend-tstart)/(double)min_nmb;
-	      vector<double> knots;
-	      curr_under->basis(dir).knotsSimple(knots);
-	      vector<double> newknots;
-	      for (size_t kj=1; kj<knots.size(); ++kj)
-		{
-		  double del2 = (knots[kj] - knots[kj-1]);
-		  if (del2 < del1)
-		    continue;
-		  int nmb = std::max(1, (int)(del2/del1));
-		  double del3 = del2/(double)(nmb+1);
-		  int kr;
-		  double par;
-		  for (kr=0, par=knots[kj-1]+del3; kr<nmb; ++kr, par+=del3)
-		    newknots.push_back(par);
-		}
+    }
 
-	      curr_under->insertKnot(dir, newknots);
+  // Add new knot lines if necessary
+  shared_ptr<SplineVolume> curr_under = 
+    dynamic_pointer_cast<SplineVolume>(curr_vol->getVolume());
+  double parspan[3];
+  double mean_span = 0.0;
+  for (int dir=0; dir<3; ++dir)
+    {
+      parspan[dir] = curr_under->endparam(dir) - curr_under->startparam(dir);
+      mean_span += parspan[dir];
+    }
+  mean_span /= 3.0;
+
+  for (int dir=0; dir<3; ++dir)
+    {
+      int curr_min = 
+	(distribute) ? (int)(parspan[dir]*min_nmb/mean_span) : min_nmb;
+      curr_min = std::min(4*min_nmb, std::max(2, curr_min));
+      int num_el = curr_under->numElem(dir);
+      if (num_el < curr_min)
+	{
+	  double tstart =  curr_under->startparam(dir);
+	  double tend =  curr_under->endparam(dir);
+	  double del1 = (tend-tstart)/(double)curr_min;
+	  vector<double> knots;
+	  curr_under->basis(dir).knotsSimple(knots);
+	  vector<double> newknots;
+	  for (size_t kj=1; kj<knots.size(); ++kj)
+	    {
+	      double del2 = (knots[kj] - knots[kj-1]);
+	      if (del2 < del1)
+		continue;
+	      int nmb = std::max(1, (int)(del2/del1));
+	      double del3 = del2/(double)(nmb+1);
+	      int kr;
+	      double par;
+	      for (kr=0, par=knots[kj-1]+del3; kr<nmb; ++kr, par+=del3)
+		newknots.push_back(par);
 	    }
+	  
+	  curr_under->insertKnot(dir, newknots);
 	}
-     }
+    }
+
 
   shared_ptr<SplineVolume> under = 
     dynamic_pointer_cast<SplineVolume>(curr_vol->getVolume());
@@ -310,8 +310,12 @@ int main( int argc, char* argv[] )
 		  filewrite0.writeEnd(pre_block);
 		  
 		  // Split in concave edges
-		  vector<shared_ptr<ftVolume> > split_elem =
-		    sub_elem[kj]->splitConcaveVol(degree, true);
+		  vector<shared_ptr<ftVolume> > split_elem; 
+		  bool do_split = true;
+		  if (do_split)
+		    split_elem = sub_elem[kj]->splitConcaveVol(degree, true);
+		  else
+		    split_elem.push_back(sub_elem[kj]);
 
 		  vector<shared_ptr<ftVolume> > blocks;
 		  bool failed = false;

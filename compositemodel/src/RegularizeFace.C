@@ -39,6 +39,7 @@
 
 #include "GoTools/compositemodel/RegularizeFace.h"
 #include "GoTools/compositemodel/RegularizeUtils.h"
+#include "GoTools/compositemodel/SurfaceModelUtils.h"
 #include "GoTools/compositemodel/Vertex.h"
 #include "GoTools/compositemodel/Path.h"
 #include "GoTools/geometry/SplineSurface.h"
@@ -57,7 +58,7 @@
 #include <fstream>
 #include <cstdlib>
 
-//#define DEBUG_REG
+#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -331,7 +332,8 @@ void RegularizeFace::splitInTJoints()
 #endif
 
   bool changed = true;
-  while (changed)
+  bool found_cand_split = false;
+  while (changed && (!found_cand_split))
     {
       changed = false;
       for (size_t ki=0; ki<sub_faces_.size(); ++ki)
@@ -387,8 +389,15 @@ void RegularizeFace::splitInTJoints()
 	    {
 	      // Number of corners and T-joints exceeds 4. Not
 	      // appropriate for a 4-sided surface divide
-	      vector<shared_ptr<ftSurface> > faces = 
-		divideInTjoint(curr, Tvx, corner);
+	      vector<shared_ptr<ftSurface> > faces; 
+	      if (Tvx.size() > 1 && cand_split_.size() > 0)
+		faces = TjointCandSplit(curr, Tvx, corner);
+
+	      if (faces.size() == 0)
+		faces = divideInTjoint(curr, Tvx, corner);
+	      else
+		found_cand_split = true;
+
 	      if (faces.size() > 0 &&
 		  !(faces.size() == 1 && faces[0].get() == face_.get()))
 		{
@@ -596,21 +605,28 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
 	      for (kh=0; kh<cand_vx.size(); ++kh)
 		{
 		  size_t kr;
+		  int first_found = -1;
 		  for (kr=0; kr<other_corners.size(); ++kr)
 		    {
 		      if ((int)kr == min_level)
 			continue;
-		      if (level == 1 && 
-			  cand_vx[kh]->sameEdge(other_corners[kr].get()))
+		      bool same_edge = 
+			cand_vx[kh]->sameEdge(other_corners[kr].get());
+		      if (level == 1 && same_edge)
 			break;
-		      else if (level == 2 && 
+		      else if (level == 2 && same_edge)
+			{
+			  level = 3;
+			  break;
+			}
+		      else if (level == 2 &&
 			       cand_vx[kh]->connectedToSameVertex(other_corners[kr].get()))
-			break;
+			first_found = (int)kr;
 		    }
-		  if (kr < other_corners.size())
+		  if (first_found >= 0 || kr < other_corners.size())
 		    break;
 		}
-	      if (kh < cand_vx.size())
+	      if (level <= 2 && kh < cand_vx.size())
 		{
 		  prio.push_back(cand_vx[kh]);
 		  cand_vx.erase(cand_vx.begin()+kh);
@@ -1332,6 +1348,287 @@ void RegularizeFace::faceOneHole(vector<vector<ftEdge*> >& half_holes)
   sub_faces_.insert(sub_faces_.end(), faces.begin(), faces.end());
 }
 
+//==========================================================================
+vector<shared_ptr<ftSurface> > 
+RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
+			       vector<shared_ptr<Vertex> >& Tvx,
+			       vector<shared_ptr<Vertex> >& corner)
+//==========================================================================
+{
+  vector<shared_ptr<ftSurface> > faces;
+  if (Tvx.size() + corner.size() <= 4)
+    return faces;  // No point in dividing
+
+  shared_ptr<ParamSurface> surface = face->surface();
+
+  // Check if the Tjoints and corners can be related to vertices of the 
+  // corresponding face
+  vector<shared_ptr<Vertex> > vx;
+  vx.insert(vx.end(), Tvx.begin(), Tvx.end());
+  vx.insert(vx.end(), corner.begin(), corner.end());
+  shared_ptr<Vertex> dummy;
+  pair<shared_ptr<Vertex>, int> dummy_match = make_pair(dummy, -1);
+  vector<pair<shared_ptr<Vertex>,int> > vx_match(vx.size(), dummy_match);
+  Point dir;   // Average direction between matching vertices
+  int nmb_match = 0;
+  vector<Point> other_pos;
+  size_t ki;
+  for (ki=0; ki<vx.size(); ++ki)
+    {
+      // Identify the vertex connected to the current T-joint vertex not
+      // lying in this face
+      vector<ftEdge*> edgs = vx[ki]->getNonFaceEdges(face.get());
+      if (edgs.size() == 1)
+	{
+	  // Check if the opposite edge vertex can be associated to a
+	  // the endpoint of a candidate splitting edge
+	  shared_ptr<Vertex> other = edgs[0]->getOtherVertex(vx[ki].get());
+
+	  // Find closest match point
+	  double min_dist = HUGE;
+	  int bd_type = -1;
+	  Point pt = other->getVertexPoint();
+	  for (size_t kj=0; kj<cand_split_.size(); ++kj)
+	    {
+	      double dist1 = pt.dist(cand_split_[kj].first.first);
+	      double dist2 = pt.dist(cand_split_[kj].second.first);
+	      if (dist1 < dist2 && dist1 < min_dist)
+		{
+		  min_dist = dist1;
+		  bd_type = cand_split_[kj].first.second;
+		}
+	      else if (dist2 < min_dist)
+		{
+		  min_dist = dist2;
+		  bd_type = cand_split_[kj].second.second;
+		}
+	    }
+	  if (min_dist < epsge_)
+	    {
+	      vx_match[ki] = make_pair(other, bd_type);
+	      other_pos.push_back(other->getVertexPoint());
+	      Point curr_dir = 
+		other->getVertexPoint() - vx[ki]->getVertexPoint();
+	      if (dir.dimension() == 0)
+		dir = curr_dir;
+	      else
+		dir += curr_dir;
+	      nmb_match++;
+	    }
+	}
+    }
+  if (nmb_match > 1)
+    dir /= (double)nmb_match;
+
+  // Connect only if all T-vertices are connected either to vertex corresponding
+  // to another T-vertex, to a vertex corresponding to a corner or the
+  // corresponding vertices are connected to a common vertex
+  // First check for corresponding vertices
+  for (ki=0; ki<Tvx.size(); ++ki)
+    if (vx_match[ki].second < 0)
+      break;
+  if (ki < Tvx.size())
+    return faces;
+
+  size_t nmb_Tvx = Tvx.size();
+  vector<pair<shared_ptr<Vertex>,shared_ptr<Vertex> > > connect;
+  for (ki=0; ki<nmb_Tvx; )
+    {
+      // Look for a direct connection
+      size_t kj;
+      for (kj=0; kj<vx_match.size(); ++kj)
+	{
+	  if (kj == ki)
+	    continue;
+	  if (vx_match[kj].second >= 0 &&
+	      vx_match[ki].first->sameEdge(vx_match[kj].first.get()) &&
+	      (!vx[ki]->sameEdge(vx[kj].get())))
+	    break;
+	}
+      if (kj < vx_match.size())
+	{
+	  connect.push_back(std::make_pair(vx[ki], vx[kj]));
+	  vx.erase(vx.begin()+std::max(ki,kj));
+	  vx_match.erase(vx_match.begin()+std::max(ki,kj));
+	  vx.erase(vx.begin()+std::min(ki,kj));
+	  vx_match.erase(vx_match.begin()+std::min(ki,kj));
+	  if (kj < nmb_Tvx)
+	    nmb_Tvx--;
+	  nmb_Tvx--;
+	}
+      else
+	++ki;
+    }
+
+  // Check if remaining T-vertices can be connected through a common
+  // vertex
+  Vertex* common_vx = NULL;
+  if (nmb_Tvx > 0)
+    {
+      // Check if the face is surrounded by already regularized faces
+      // This test is moved from the top of the function for case specific
+      // reasons. Should be considered closer
+      vector<shared_ptr<ftEdge> > loop_edgs = face->getAllEdges(0);  // Outer loop
+      for (ki=0; ki<loop_edgs.size(); ++ki)
+      	{
+      	  if (!loop_edgs[ki]->twin())
+      	    break;   // Should not happen
+	  
+      	  ftFaceBase* other = loop_edgs[ki]->twin()->geomEdge()->face();
+      	  size_t kj;
+      	  for (kj=0; kj<treated_faces_.size(); ++kj)
+      	if (treated_faces_[kj].get() == other)
+      	  break;
+      	  if (kj == treated_faces_.size())
+      	    break;
+      	}
+      if (ki < loop_edgs.size())
+      	return faces;
+
+      for (ki=1; ki<nmb_Tvx; ++ki)
+	{
+	  vector<shared_ptr<Vertex> > commonvxs =
+	    vx_match[0].first->getCommonVertices(vx_match[ki].first.get());
+
+	  // Check if there exists a vertex that coincides with a
+	  // candidate split point without a match in the current vertices
+	  size_t kj, kr;
+	  for (kr=0; kr<commonvxs.size(); ++kr)
+	    {
+	      Point pt = commonvxs[kr]->getVertexPoint();
+	      for (kj=0; kj<cand_split_.size(); ++kj)
+		{
+		  double dist1 = pt.dist(cand_split_[kj].first.first);
+		  double dist2 = pt.dist(cand_split_[kj].second.first);
+		  if (dist1 < epsge_ || dist2 < epsge_)
+		    {
+		      size_t kh;
+		      for (kh=0; kh<other_pos.size(); ++kh)
+			if (pt.dist(other_pos[kh]) < epsge_)
+			  break;
+		      if (kh == other_pos.size())
+			break;
+		    }
+		}
+	      if (kj < cand_split_.size())
+		{
+		  common_vx = commonvxs[kr].get();
+		  break;
+		}
+	      if (kr == commonvxs.size())
+		break;  // Common vertex not found
+	    }
+	}
+      if (ki < nmb_Tvx)
+	return faces;
+
+      if (common_vx == NULL)
+	{
+	  for (ki=nmb_Tvx; ki<vx_match.size(); ++ki)
+	    {
+	      // Look for a common vertex between the T-vertex and a corner
+	      vector<shared_ptr<Vertex> > commonvxs =
+		vx_match[0].first->getCommonVertices(vx_match[ki].first.get());
+	      
+	      // Check if there exists a vertex that coincides with a
+	      // candidate split point without a match in the current vertices
+	      size_t kj, kr;
+	      for (kr=0; kr<commonvxs.size(); ++kr)
+		{
+		  Point pt = commonvxs[kr]->getVertexPoint();
+		  for (kj=0; kj<cand_split_.size(); ++kj)
+		    {
+		      double dist1 = pt.dist(cand_split_[kj].first.first);
+		      double dist2 = pt.dist(cand_split_[kj].second.first);
+		      if (dist1 < epsge_ || dist2 < epsge_)
+			{
+			  size_t kh;
+			  for (kh=0; kh<other_pos.size(); ++kh)
+			    if (pt.dist(other_pos[kh]) < epsge_)
+			      break;
+			  if (kh == other_pos.size())
+			    break;
+			}
+		    }
+		  if (kj < cand_split_.size())
+		    {
+		      common_vx = commonvxs[kr].get();
+		      break;
+		    }
+		}
+	      if (common_vx)
+		break;
+	    }
+	}
+      if (common_vx == NULL)
+	return faces;
+
+      // Mark all vertices to be connected to a vertex corresponding
+      // to the identified  common one
+      shared_ptr<Vertex> dummy_vx;
+      for (ki=0; ki<vx_match.size(); ++ki)
+	{
+	  if (vx_match[ki].second >= 0 && 
+	      vx_match[ki].first->sameEdge(common_vx))
+	    connect.push_back(make_pair(vx[ki], dummy_vx));
+	}
+    }
+
+  // Find a corresponding point to the common vertex in this face
+  Point common_pnt;
+  Point common_par;
+  if (common_vx)
+    {
+      // Intersect the current face with a line through the common vertex
+      // having the average direction between matching vertices to
+      // find this point
+      vector<pair<Point,Point> > int_pt;
+      vector<pair<shared_ptr<ParamCurve>, shared_ptr<ParamCurve> > > line_seg;
+      SurfaceModelUtils::intersectLine(surface,
+				       common_vx->getVertexPoint(), dir,
+				       epsge_, int_pt, line_seg);
+      if (int_pt.size() != 1 || line_seg.size() > 0)
+	return faces; // Not a unique result
+
+      // Should check whether the found point lies at a face boundary.
+      // Postpone
+
+      common_pnt = int_pt[0].first;
+      common_par = int_pt[0].second;
+
+      // Remember correspondance between common points
+      corr_vx_pts_.push_back(make_pair(common_vx->getVertexPoint(), common_pnt));
+    }
+
+
+  // Create split segments
+  vector<shared_ptr<CurveOnSurface> > trim_segments;
+  shared_ptr<BoundedSurface> bd_sf;
+  for (ki=0; ki<connect.size(); ++ki)
+    {
+      Point vx_par1 = connect[ki].first->getFacePar(face.get());
+      Point vx_par2 = (connect[ki].second.get()) ?
+	connect[ki].second->getFacePar(face.get()) : common_par;
+      vector<shared_ptr<CurveOnSurface> > seg = 
+	BoundedUtils::getTrimCrvsParam(surface, vx_par1, vx_par2, 
+				       epsge_, bd_sf);
+
+      // Should test split segments. Postpone
+      if (seg.size() > 0)
+	trim_segments.insert(trim_segments.end(), seg.begin(), seg.end());
+    }
+  
+  // Define bounded surfaces
+  vector<shared_ptr<BoundedSurface> > sub_sfs =
+    BoundedUtils::splitWithTrimSegments(bd_sf, trim_segments, epsge_);
+
+  // Define faces
+  vector<shared_ptr<Vertex> > non_corner; // Dummy
+  faces = RegularizeUtils::createFaces(sub_sfs, face, epsge_, tol2_,
+				       angtol_, non_corner);
+
+  return faces;
+}
 
 //==========================================================================
 shared_ptr<CurveOnSurface> 
