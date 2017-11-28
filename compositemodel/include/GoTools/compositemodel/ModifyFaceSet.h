@@ -60,6 +60,10 @@ class ModifyFaceSet
   /// Destructor
   ~ModifyFaceSet();
 
+  /// Identify a surface to use in a Boolean operation to
+  /// split the model
+  shared_ptr<ParamSurface> getSplittingSurface();
+
   /// Return the resulting face set as a surface model
   shared_ptr<SurfaceModel> getModifiedModel(int& nmb);
 

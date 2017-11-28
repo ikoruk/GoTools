@@ -58,7 +58,7 @@
 #include <fstream>
 #include <cstdlib>
 
-#define DEBUG_REG
+//#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -1403,7 +1403,7 @@ RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
 		  bd_type = cand_split_[kj].second.second;
 		}
 	    }
-	  if (min_dist < epsge_)
+	  if (min_dist < tol2_)
 	    {
 	      vx_match[ki] = make_pair(other, bd_type);
 	      other_pos.push_back(other->getVertexPoint());
@@ -1432,29 +1432,43 @@ RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
 
   size_t nmb_Tvx = Tvx.size();
   vector<pair<shared_ptr<Vertex>,shared_ptr<Vertex> > > connect;
-  for (ki=0; ki<nmb_Tvx; )
+  for (ki=0; ki<nmb_Tvx; ++ki)
     {
       // Look for a direct connection
       size_t kj;
-      for (kj=0; kj<vx_match.size(); ++kj)
+      for (kj=ki+1; kj<vx_match.size(); ++kj)
 	{
-	  if (kj == ki)
-	    continue;
 	  if (vx_match[kj].second >= 0 &&
 	      vx_match[ki].first->sameEdge(vx_match[kj].first.get()) &&
 	      (!vx[ki]->sameEdge(vx[kj].get())))
+
+	  connect.push_back(std::make_pair(vx[ki], vx[kj]));
+	  // vx.erase(vx.begin()+std::max(ki,kj));
+	  // vx_match.erase(vx_match.begin()+std::max(ki,kj));
+	  // vx.erase(vx.begin()+std::min(ki,kj));
+	  // vx_match.erase(vx_match.begin()+std::min(ki,kj));
+	  // if (kj < nmb_Tvx)
+	  //   nmb_Tvx--;
+	  // nmb_Tvx--;
+	}
+    }
+
+  // Remove used matches
+  for (ki=0; ki<vx.size(); )
+    {
+      size_t kj;
+      for (kj=0; kj<connect.size(); ++kj)
+	{
+	  if (connect[kj].first.get() == vx[ki].get() ||
+	      connect[kj].second.get() == vx[ki].get())
 	    break;
 	}
-      if (kj < vx_match.size())
+      if (ki < connect.size())
 	{
-	  connect.push_back(std::make_pair(vx[ki], vx[kj]));
-	  vx.erase(vx.begin()+std::max(ki,kj));
-	  vx_match.erase(vx_match.begin()+std::max(ki,kj));
-	  vx.erase(vx.begin()+std::min(ki,kj));
-	  vx_match.erase(vx_match.begin()+std::min(ki,kj));
-	  if (kj < nmb_Tvx)
+	  vx.erase(vx.begin()+ki);
+	  vx_match.erase(vx_match.begin()+ki);
+	  if (ki < nmb_Tvx)
 	    nmb_Tvx--;
-	  nmb_Tvx--;
 	}
       else
 	++ki;
@@ -1526,6 +1540,9 @@ RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
 	{
 	  for (ki=nmb_Tvx; ki<vx_match.size(); ++ki)
 	    {
+	      if (!vx_match[ki].first.get())
+		continue;
+
 	      // Look for a common vertex between the T-vertex and a corner
 	      vector<shared_ptr<Vertex> > commonvxs =
 		vx_match[0].first->getCommonVertices(vx_match[ki].first.get());
@@ -1604,14 +1621,68 @@ RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
   // Create split segments
   vector<shared_ptr<CurveOnSurface> > trim_segments;
   shared_ptr<BoundedSurface> bd_sf;
+  double fac2 = 2.0;
   for (ki=0; ki<connect.size(); ++ki)
     {
-      Point vx_par1 = connect[ki].first->getFacePar(face.get());
-      Point vx_par2 = (connect[ki].second.get()) ?
-	connect[ki].second->getFacePar(face.get()) : common_par;
-      vector<shared_ptr<CurveOnSurface> > seg = 
-	BoundedUtils::getTrimCrvsParam(surface, vx_par1, vx_par2, 
-				       epsge_, bd_sf);
+      // First check if any candidates should be moved
+      shared_ptr<Vertex> vx1 = connect[ki].first;
+      shared_ptr<Vertex> vx2 = connect[ki].second;
+      if (vx2.get())
+	{
+	  Point in_vec1 = RegularizeUtils::getInVec(vx1, face);
+	  Point in_vec2 = RegularizeUtils::getInVec(vx2, face);
+	  bool single1 = true, single2 = true;
+	  for (size_t kj=0; kj<connect.size(); ++kj)
+	    {
+	      if (kj == ki)
+		continue;
+	      if (connect[kj].first.get() == vx1.get() ||
+		  connect[kj].second.get() == vx1.get())
+		single1 = false;
+	      if (connect[kj].first.get() == vx2.get() ||
+		  connect[kj].second.get() == vx2.get())
+		single2 = false;
+	    }
+
+	  Point vec = vx2->getVertexPoint() - vx1->getVertexPoint();
+	  if (vec*in_vec1 < -fac2*angtol_ && single2)
+	    {
+	      bool modified = 
+		RegularizeUtils::updateVertexPos(face, vx1, vx2, epsge_,
+						 tol2_, angtol_);
+	      if (modified)
+		connect[ki].second = vx2;
+	    }
+	  
+	  if (vec*in_vec2 < -fac2*angtol_ && single1)
+	    {
+	      bool modified = 
+		RegularizeUtils::updateVertexPos(face, vx2, vx1, epsge_,
+						 tol2_, angtol_);
+	      if (modified)
+		connect[ki].first = vx1;
+	    }
+	}
+
+      vector<shared_ptr<CurveOnSurface> > seg;
+
+      // Check curve shape
+      shared_ptr<ParamCurve> pcurve;
+      if (vx2.get()) 
+	pcurve = RegularizeUtils::checkStrightParCv(face, vx1, vx2,
+						    epsge_, bend_);
+      if (pcurve.get())
+	{
+	  seg = BoundedUtils::getTrimCrvsPcrv(surface, pcurve, epsge_, bd_sf);
+	}
+      else
+	{
+	  Point vx_par1 = vx1->getFacePar(face.get());
+	  Point vx_par2 = (vx2.get()) ?
+	    vx2->getFacePar(face.get()) : common_par;
+	  seg = BoundedUtils::getTrimCrvsParam(surface, vx_par1, vx_par2, 
+					       epsge_, bd_sf);
+	}
 
       // Should test split segments. Postpone
       if (seg.size() > 0)
@@ -2309,7 +2380,8 @@ RegularizeFace::faceOuterBdFaces(vector<vector<ftEdge*> >& half_holes)
 
    if (vx_pri_.size() > 0)
      {
-       vector<shared_ptr<Vertex> > sorted_pri = prioritizeCornerVx(vx_pri_);
+       vector<shared_ptr<Vertex> > sorted_pri = prioritizeCornerVx(vx_pri_,
+								   true);
        sorted_corners.insert(sorted_corners.begin(), sorted_pri.begin(), 
 			     sorted_pri.end());
      }
@@ -2443,8 +2515,13 @@ RegularizeFace::faceOuterBdFaces(vector<vector<ftEdge*> >& half_holes)
 
        // Check split configuration to avoid 3-sided surfaces
        if (!allow_degen_)
-	 RegularizeUtils::checkTrimConfig(face_, trim_segments, split_vx,
-					  corners, tol2_);
+	 {
+	     vector<shared_ptr<Vertex> > corners2 = 
+	       face_->getCornerVertices(bend_, 0);
+
+	     RegularizeUtils::checkTrimConfig(face_, trim_segments, split_vx,
+					      corners2, tol2_);
+	 }
        
        if (trim_segments.size() > 0)
 	 break;
@@ -2807,33 +2884,53 @@ RegularizeFace::getSignificantVertex(vector<shared_ptr<Vertex> > cand_vx)
 	}
     }
       
+#ifdef DEBUG
   if (max_ang-prev_ang < 0.1*max_ang)
     std::cout << "Significant vertex insignificant" << std::endl;
+#endif
 
   return cand_vx2[max_idx];
 }
 
 //==========================================================================
 vector<shared_ptr<Vertex> >
-RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
+RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx,
+				   bool reduced)
 //==========================================================================
 {
   vector<shared_ptr<Vertex> > cand_vx2(cand_vx.begin(), cand_vx.end());
   int nmb_pri = 0;
 
+  vector<shared_ptr<Vertex> > non_corner = face_->getNonCornerVertices(bend_);
+
   // Identify edge opposite to vertex if the face has an odd number of
   // edges
   DirectionCone dummy;  
-  vector<ftEdge*> opposite_edge(cand_vx.size());
+  vector<vector<ftEdge*> > opposite_edge(cand_vx2.size());
   vector<DirectionCone> cone(cand_vx2.size(), dummy);
   vector<double> len(cand_vx2.size());
   vector<shared_ptr<ftEdge> > face_edges = face_->getAllEdges();
+  Body *bd = face_->getBody();
+  size_t nmb = cand_vx2.size()/2;
   size_t kj, kr;
-  if ((int)face_edges.size()%2 == 1)
+  if (!reduced && (int)cand_vx2.size()%2 == 1)
+    {
+      for (size_t ki=0; ki<cand_vx2.size(); ++ki)
+	{
+	  // Identify the opposite edge(s)
+	  shared_ptr<Vertex> prev_vx = cand_vx2[(ki+nmb)%cand_vx2.size()];
+	  shared_ptr<Vertex> next_vx = cand_vx2[(ki+nmb+1)%cand_vx2.size()];
+
+	  opposite_edge[ki] = Path::edgeChainFace(face_.get(), prev_vx, 
+						  next_vx, cand_vx2[ki]);
+	}
+    }
+  else if (reduced && (int)face_edges.size()%2 == 1)
     {
       for (size_t ki=0; ki<cand_vx2.size(); ++ki)
 	{
 	  // Identify the opposite edge
+	  ftEdge* curr_opposite;
 	  shared_ptr<Vertex> curr_vx = cand_vx2[ki];
 	  shared_ptr<Vertex> prev_vx;
 	  int nmb = (int)face_edges.size()/2;
@@ -2857,17 +2954,28 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
 		  for (kj=0; kj<curr_edges.size(); ++kj)
 		    if (!prev_vx->hasEdge(curr_edges[kj]))
 		      {
-			opposite_edge[ki] = curr_edges[kj];
+			curr_opposite = curr_edges[kj];
 			break;
 		      }
 		}
 	    }
+	  opposite_edge[ki].push_back(curr_opposite);
+	}
+    }
 
-	  if (opposite_edge[ki])
-	    {
-	      cone[ki] = opposite_edge[ki]->geomCurve()->directionCone();
-	      len[ki] = opposite_edge[ki]->estimatedCurveLength();
-	    }
+  for (size_t ki=0; ki<opposite_edge.size(); ++ki)
+    {
+      if (opposite_edge[ki].size() == 0)
+	continue;
+      cone[ki] = opposite_edge[ki][0]->geomCurve()->directionCone();
+      len[ki] = opposite_edge[ki][0]->estimatedCurveLength();
+      for (kr=1; kr<opposite_edge[ki].size(); ++kr)
+	{
+	  DirectionCone cone2 = 
+	    opposite_edge[ki][kr]->geomCurve()->directionCone();
+	  cone[ki].addUnionWith(cone2);
+	  double len2 = opposite_edge[ki][kr]->estimatedCurveLength();
+	  len[ki] += len2;
 	}
     }
 
@@ -2946,8 +3054,18 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
 	  
 	  if (min_dist2 < level_dist)
 	    {
-	      std::swap(cand_vx2[nmb_pri], cand_vx2[min_ind]);
-	      ++nmb_pri;
+	      // Check if a non-corner has a smaller distance
+	      for (kj=0; kj<non_corner.size(); ++kj)
+		{
+		  double dist = pos1.dist(non_corner[kj]->getVertexPoint());
+		  if (dist < min_dist2)
+		    break;
+		}
+	      if (kj == non_corner.size())
+		{
+		  std::swap(cand_vx2[nmb_pri], cand_vx2[min_ind]);
+		  ++nmb_pri;
+		}
 	    }
 	}
       if (cand_vx2.size() == 0)
@@ -2960,11 +3078,25 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
       // interior of the oppisite edge
       // Prioritize corners where the adjacent surface
       // to the opposite edge has not been regularized before
+      // Prioritize also faces that have a corner where only two 
+      // faces meet
       for (size_t ki=0; ki<cand_vx2.size(); ++ki)
 	{
+	  vector<ftSurface*> vx_faces = cand_vx2[ki]->faces(bd);
+	  std::set<shared_ptr<ParamSurface> > under_sf;
+	  for (size_t kj=0; kj<vx_faces.size(); ++kj)
+	    {
+	      shared_ptr<ParamSurface> tmp_sf = vx_faces[kj]->surface();
+	      shared_ptr<BoundedSurface> tmp_bd = 
+		dynamic_pointer_cast<BoundedSurface,ParamSurface>(tmp_sf);
+	      if (tmp_bd.get())
+		tmp_sf = tmp_bd->underlyingSurface();
+	      under_sf.insert(tmp_sf);
+	    }
+	  int nmb_under = (int)under_sf.size();
 	  ftSurface *adj_face = NULL;
-	  if (opposite_edge[ki] && opposite_edge[ki]->twin())
-	    adj_face = opposite_edge[ki]->twin()->face()->asFtSurface();
+	  if (opposite_edge[ki].size() == 1 && opposite_edge[ki][0]->twin())
+	    adj_face = opposite_edge[ki][0]->twin()->face()->asFtSurface();
 	  if (adj_face)
 	    {
 	      // Check if the adjacent face already has been subject
@@ -2974,14 +3106,15 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
 		  if (adj_face == treated_faces_[kr].get())
 		    break;
 		}
-	      if (kr == treated_faces_.size())
-		{
-		  std::swap(cand_vx2[nmb_pri], cand_vx2[ki]);
-		  std::swap(len[nmb_pri], len[ki]);
-		  std::swap(cone[nmb_pri], cone[ki]);
-		  std::swap(opposite_edge[nmb_pri], opposite_edge[ki]);
-		  nmb_pri++;
-		}
+	    }
+	  if ((adj_face && kr == treated_faces_.size()) || 
+	      nmb_under == 2)
+	    {
+	      std::swap(cand_vx2[nmb_pri], cand_vx2[ki]);
+	      std::swap(len[nmb_pri], len[ki]);
+	      std::swap(cone[nmb_pri], cone[ki]);
+	      std::swap(opposite_edge[nmb_pri], opposite_edge[ki]);
+	      nmb_pri++;
 	    }
 	}
 
@@ -2990,8 +3123,8 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
 	  for (size_t ki=0; ki<cand_vx2.size(); ++ki)
 	    {
 	      ftSurface *adj_face = NULL;
-	      if (opposite_edge[ki] && opposite_edge[ki]->twin())
-		adj_face = opposite_edge[ki]->twin()->face()->asFtSurface();
+	      if (opposite_edge[ki].size() == 1 && opposite_edge[ki][0]->twin())
+		adj_face = opposite_edge[ki][0]->twin()->face()->asFtSurface();
 	      if (adj_face)
 		{
 		  vector<shared_ptr<Vertex> > Tvx = 
@@ -2999,7 +3132,7 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
 		  
 		  // Remove T vertices being connected to the edge vertices
 		  shared_ptr<Vertex> vx1, vx2;
-		  opposite_edge[ki]->getVertices(vx1, vx2);
+		  opposite_edge[ki][0]->getVertices(vx1, vx2);
 		  for (int kh=(int)Tvx.size()-1; kh>=0; --kh)
 		    {
 		      if (Tvx[kh]->sameEdge(vx1.get()) || 
@@ -3094,45 +3227,69 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx)
 	ang = 2.0*M_PI - ang;
       angle[ki] = ang;
 
-      if (opposite_edge[ki])
+      if (opposite_edge[ki].size() == 1)
 	{
 	  double par, dist;
 	  Point close_pt;
-	  opposite_edge[ki]->closestPoint(cand_vx2[ki]->getVertexPoint(), par,
-					  close_pt, dist);
+	  opposite_edge[ki][0]->closestPoint(cand_vx2[ki]->getVertexPoint(), 
+					     par, close_pt, dist);
 	  double len1 = 
-	    opposite_edge[ki]->estimatedCurveLength(opposite_edge[ki]->tMin(),
+	    opposite_edge[ki][0]->estimatedCurveLength(opposite_edge[ki][0]->tMin(),
 						    par);
 	  double len2 = 
-	    opposite_edge[ki]->estimatedCurveLength(par,
-						    opposite_edge[ki]->tMax());
+	    opposite_edge[ki][0]->estimatedCurveLength(par,
+						    opposite_edge[ki][0]->tMax());
 	  min_len[ki] = std::min(len1, len2);
 	  len_frac[ki] = min_len[ki]/len[ki];
 	}
     }
 
-  // Sort vector according to decreasing angle, but prioritize 
+
+  // Sort vector according to decreasing angle or length fraction
+  // depending on whether we sort a reduced set or not, but prioritize 
   // selected vertices
-  int kk, kh;
-  for (kk=0; kk<nmb_pri; ++kk)
-    for (kh=kk+1; kh<nmb_pri; ++kh)
-      if (angle[kh] > angle[kk]+ang_tol ||
-	  (fabs(angle[kh]-angle[kk]) < tol && perpendicular[kk] &&
-	   (!perpendicular[kh])))
-	{
-	  std::swap(cand_vx2[kk], cand_vx2[kh]);
-	  std::swap(angle[kk], angle[kh]);
-	}
+      int kk, kh;
+      for (kk=0; kk<nmb_pri; ++kk)
+	for (kh=kk+1; kh<nmb_pri; ++kh)
+	  {
+	    bool swap = false;
+	    if (reduced && len_frac[kh] > len_frac[kk])
+	      swap = true;
+	    else if ((reduced && fabs(len_frac[kh]-len_frac[kk] < ang_tol) ||
+		      !reduced))
+	      {
+		if (angle[kh] > angle[kk]+ang_tol ||
+		    (fabs(angle[kh]-angle[kk]) < tol && perpendicular[kk] &&
+		     (!perpendicular[kh])))
+		  swap = true;
+	      }
+	    if (swap)
+	      {
+		std::swap(cand_vx2[kk], cand_vx2[kh]);
+		std::swap(angle[kk], angle[kh]);
+	      }
+	  }
       
-  for (kk=nmb_pri; kk<(int)cand_vx2.size(); ++kk)
-    for (kh=kk+1; kh<(int)cand_vx2.size(); ++kh)
-      if (angle[kh] > angle[kk]+ang_tol ||
-	  (fabs(angle[kh]-angle[kk]) < tol && perpendicular[kk] &&
-	   (!perpendicular[kh])))
-	{
-	  std::swap(cand_vx2[kk], cand_vx2[kh]);
-	  std::swap(angle[kk], angle[kh]);
-	}
+      for (kk=nmb_pri; kk<(int)cand_vx2.size(); ++kk)
+	for (kh=kk+1; kh<(int)cand_vx2.size(); ++kh)
+	  {
+	    bool swap = false;
+	    if (reduced && len_frac[kh] > len_frac[kk])
+	      swap = true;
+	    else if ((reduced && fabs(len_frac[kh]-len_frac[kk] < ang_tol) ||
+		      !reduced))
+	      {
+		if (angle[kh] > angle[kk]+ang_tol ||
+		    (fabs(angle[kh]-angle[kk]) < tol && perpendicular[kk] &&
+		     (!perpendicular[kh])))
+		  swap = true;
+	      }
+	    if (swap)
+	    {
+	      std::swap(cand_vx2[kk], cand_vx2[kh]);
+	      std::swap(angle[kk], angle[kh]);
+	    }
+	  }
 
   return cand_vx2;
 }
@@ -8545,7 +8702,79 @@ RegularizeFace::classifyVertices()
 	      if (edges[kh]->twin())
 		faces.insert(edges[kh]->twin()->geomEdge()->face()->asFtSurface());
 	    }
-	  if (faces.size() != 2)
+
+	  bool same_elem = false;
+	  if (faces.size() == 3)
+	    {
+	      // Check underlying surface
+	      vector<ftSurface*> faces2(faces.begin(), faces.end());
+	      vector<shared_ptr<ParamSurface> > under;
+	      size_t kh;
+	      for (kh=0; kh<faces2.size(); )
+		{
+		  if (faces2[kh] == face_.get())
+		    faces2.erase(faces2.begin()+kh);
+		  else
+		    {
+		      under.push_back(faces2[kh]->surface());
+		      ++kh;
+		    }
+		}
+	      for (kh=0; kh<under.size(); ++kh)
+		{
+		  shared_ptr<BoundedSurface> bd_sf = 
+		    dynamic_pointer_cast<BoundedSurface, ParamSurface>(under[kh]);
+		  if (bd_sf.get())
+		    under[kh] = bd_sf->underlyingSurface();
+		}
+
+	      if (under.size() == 2)
+		same_elem = SurfaceModelUtils::sameElementarySurface(under[0], 
+								     under[1],
+								     epsge_,
+								     angtol_);
+
+	      if (faces2.size() != 2)
+		same_elem = false;  // Unexpected
+
+	      if (same_elem)
+		{
+		  // Exclude plane. Does not have a seam
+		  shared_ptr<ParamSurface> parent = under[0]->getParentSurface();
+		  if (parent.get())
+		    {
+		      shared_ptr<ElementarySurface> elem =
+			dynamic_pointer_cast<ElementarySurface, ParamSurface>(parent);
+		      if (elem.get() && elem->instanceType() == Class_Plane)
+			same_elem = false;
+		    }
+
+		}
+		  if (same_elem)
+		    {
+		      // Check if the edge between the rotational faces continues
+		      vector<shared_ptr<Vertex> > common_vx = 
+			faces2[0]->getCommonVertices(faces2[1]);
+
+		      // Remove current
+		      for (kh=0; kh<common_vx.size();)
+			{
+			  if (common_vx[kh].get() == vx[ki].get())
+			    common_vx.erase(common_vx.begin()+kh);
+			  else 
+			    ++kh;
+			}
+		      if (common_vx.size() != 1)
+			same_elem = false;  // Unexpected
+
+		      vector<ftSurface*> other_faces = 
+			common_vx[0]->faces(body);
+		      if (other_faces.size() != 3)
+			  same_elem = false;
+		    }
+	    }
+
+	  if (faces.size() != 2 && !same_elem)
 	    seam = false;
 
 	  if (!seam)

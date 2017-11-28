@@ -744,7 +744,7 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
     }
 
 #ifdef DEBUG
-  std::ofstream of0("intcurves.g2");
+  std::ofstream of0("intcurves_models.g2");
   for (ki=0; ki<nmb1; ++ki)
     {
       for (size_t km=0; km<all_int_cvs1[ki].size(); ++km)
@@ -763,7 +763,7 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  tmpcv->write(of0);
 	}
     }
-  std::ofstream of01("parcurves.g2");
+  std::ofstream of01("parcurves_model.g2");
   for (ki=0; ki<nmb1; ++ki)
     {
       for (size_t km=0; km<all_int_cvs1[ki].size(); ++km)
@@ -814,8 +814,10 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  surf->write(of1);
 #endif
 
+	  Point normal;
+	  surf->normal(normal, u, v);
 	  double pt_dist;
- 	  bool inside = model2->isInside(pnt, pt_dist);
+ 	  bool inside = model2->isInside(pnt, normal, pt_dist);
 	  shared_ptr<ParamSurface> tmp_surf(surf->clone());
 	  shared_ptr<ftSurface> tmp_face(new ftSurface(tmp_surf, -1));
 	  if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
@@ -828,8 +830,8 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  if (inside)
 	    {
 	      inside1.push_back(tmp_face);
-	      if (fabs(pt_dist) < toptol_.gap)
-		outside1.push_back(tmp_face);
+	      // if (fabs(pt_dist) < toptol_.gap)
+	      // 	outside1.push_back(tmp_face);
 	    }
 	  else
 	    outside1.push_back(tmp_face);
@@ -845,7 +847,9 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  }
 	  catch(...)
 	    {
+#ifdef DEBUG
 	      std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 	    }
 	  for (size_t kr=0; kr<trim_sfs.size(); ++kr)
 	    {
@@ -857,8 +861,12 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 // 		std::cout << "Surface not valid: " << state << std::endl;
 #endif
 
-	  // Check if the trimmed surface lies inside or outside the 
-	  // other surface model.
+	      // Simplify if possible
+	      double max_dist;
+	      trim_sfs[kr]->simplifyBdLoops(eps, toptol_.kink, max_dist);
+
+	      // Check if the trimmed surface lies inside or outside the 
+	      // other surface model.
 	      double u, v;
 	      Point pnt =  trim_sfs[kr]->getInternalPoint(u,v);
 
@@ -868,8 +876,10 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	      trim_sfs[kr]->write(of1);
 #endif
 
+	      Point normal;
+	      trim_sfs[kr]->normal(normal, u, v);
 	      double pt_dist;
-	      bool inside = model2->isInside(pnt, pt_dist);
+	      bool inside = model2->isInside(pnt, normal, pt_dist);
 	      shared_ptr<ftSurface> tmp_face(new ftSurface(trim_sfs[kr], -1));
 	      if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
 		{
@@ -880,19 +890,19 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	      if (inside)
 		{
 		  inside1.push_back(tmp_face);
-		  if (fabs(pt_dist) < toptol_.gap)
-		    {
-		      shared_ptr<ParamSurface> tmp_surf2(trim_sfs[kr]->clone());
-		      shared_ptr<ftSurface> tmp_face2(new ftSurface(tmp_surf2, -1));
-		      if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
-			{
-			  int bd_cond_type, bd_cond;
-			  faces_[ki]->asFtSurface()->getBoundaryConditions(bd_cond_type, bd_cond);
-			  tmp_face2->setBoundaryConditions(bd_cond_type, bd_cond);
-			}
+		  // if (fabs(pt_dist) < toptol_.gap)
+		  //   {
+		  //     shared_ptr<ParamSurface> tmp_surf2(trim_sfs[kr]->clone());
+		  //     shared_ptr<ftSurface> tmp_face2(new ftSurface(tmp_surf2, -1));
+		  //     if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
+		  // 	{
+		  // 	  int bd_cond_type, bd_cond;
+		  // 	  faces_[ki]->asFtSurface()->getBoundaryConditions(bd_cond_type, bd_cond);
+		  // 	  tmp_face2->setBoundaryConditions(bd_cond_type, bd_cond);
+		  // 	}
 
-		      outside1.push_back(tmp_face2);
-		    }
+		  //     outside1.push_back(tmp_face2);
+		  //   }
 		}
 			      
 	      else
@@ -930,8 +940,10 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  surf->write(of1);
 #endif
 
+	  Point normal;
+	  surf->normal(normal, u, v);
 	  double pt_dist;
-	  bool inside = isInside(pnt, pt_dist);
+	  bool inside = isInside(pnt, normal, pt_dist);
 	  shared_ptr<ParamSurface> tmp_surf(surf->clone());
 	  shared_ptr<ftSurface> tmp_face(new ftSurface(tmp_surf, -1));
 	  if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
@@ -943,8 +955,8 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  if (inside)
 	    {
 	      inside2.push_back(tmp_face);
-	      if (fabs(pt_dist) < toptol_.gap)
-		outside2.push_back(tmp_face);
+	      // if (fabs(pt_dist) < toptol_.gap)
+	      // 	outside2.push_back(tmp_face);
 	    }
 	  else
       	    outside2.push_back(tmp_face);
@@ -960,7 +972,9 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  }
 	  catch(...)
 	    {
+#ifdef DEBUG
 	      std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 	    }
 	  for (size_t kr=0; kr<trim_sfs.size(); ++kr)
 	    {
@@ -972,8 +986,12 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 // 		std::cout << "Surface not valid: " << state << std::endl;
 #endif
 
-	  // Check if the trimmed surface lies inside or outside the 
-	  // other surface model.
+	      // Simplify if possible
+	      double max_dist;
+	      trim_sfs[kr]->simplifyBdLoops(eps, toptol_.kink, max_dist);
+
+	      // Check if the trimmed surface lies inside or outside the 
+	      // other surface model.
 	      double u, v;
 	      Point pnt =  trim_sfs[kr]->getInternalPoint(u,v);
 
@@ -983,8 +1001,10 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	      trim_sfs[kr]->write(of1);
 #endif
 
+	      Point normal;
+	      trim_sfs[kr]->normal(normal, u, v);
 	      double pt_dist;
-	      bool inside = isInside(pnt, pt_dist);
+	      bool inside = isInside(pnt, normal, pt_dist);
 	      shared_ptr<ftSurface> tmp_face(new ftSurface(trim_sfs[kr], -1));
 	      if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
 		{
@@ -995,18 +1015,18 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	      if (inside)
 		{
 		  inside2.push_back(tmp_face);
-		  if (fabs(pt_dist) < toptol_.gap)
-		    {
-		      shared_ptr<ParamSurface> tmp_surf2(trim_sfs[kr]->clone());
-		      shared_ptr<ftSurface> tmp_face2(new ftSurface(tmp_surf2, -1));
-		      if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
-			{
-			  int bd_cond_type, bd_cond;
-			  faces_[ki]->asFtSurface()->getBoundaryConditions(bd_cond_type, bd_cond);
-			  tmp_face2->setBoundaryConditions(bd_cond_type, bd_cond);
-			}
-		      outside2.push_back(tmp_face2);
-		    }
+		  // if (fabs(pt_dist) < toptol_.gap)
+		  //   {
+		  //     shared_ptr<ParamSurface> tmp_surf2(trim_sfs[kr]->clone());
+		  //     shared_ptr<ftSurface> tmp_face2(new ftSurface(tmp_surf2, -1));
+		  //     if (faces_[ki]->asFtSurface()->hasBoundaryConditions())
+		  // 	{
+		  // 	  int bd_cond_type, bd_cond;
+		  // 	  faces_[ki]->asFtSurface()->getBoundaryConditions(bd_cond_type, bd_cond);
+		  // 	  tmp_face2->setBoundaryConditions(bd_cond_type, bd_cond);
+		  // 	}
+		  //     outside2.push_back(tmp_face2);
+		  //   }
 		}			      
 	      else
 		outside2.push_back(tmp_face);
@@ -1206,7 +1226,9 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  }
 	  catch(...)
 	    {
+#ifdef DEBUG
 	      std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 	    }
 #ifdef DEBUG
 	  std::ofstream of1("curr1_split.g2");
@@ -1294,7 +1316,9 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	  }
 	  catch(...)
 	    {
+#ifdef DEBUG
 	      std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 	    }
 #ifdef DEBUG
 	  std::ofstream of1("curr2_split.g2");
@@ -1394,6 +1418,58 @@ bool SurfaceModel::isInside(const Point& pnt, double& dist)
 	}
 
 	
+    }
+
+//===========================================================================
+// Check if a given point lies on the positive or negative side of this
+// SurfaceModel with respect to the model normal. Tests for direction
+// of normal in case of coincidence
+// NB! If the surface set is open, this function requires a consistent
+// normal behaviour for all surfaces
+  bool SurfaceModel::isInside(const Point& pnt, const Point& normal,
+			      double& dist) 
+//===========================================================================
+    {
+      // Check if this surface set belongs to a solid. In that case check
+      // if the point lies inside this solid
+      if (faces_.size() == 0)
+	return false;
+      
+      dist = -1;  // Initiate to no information
+      ftSurface *curr = faces_[0]->asFtSurface();
+      Point pnt1 = pnt;
+      Point clo_pnt;
+      int idx;
+      double par[2];
+      
+      closestPoint(pnt1, clo_pnt, idx, par, dist);
+
+      if (curr && curr->hasBody())
+	{
+	  return curr->getBody()->isInside(pnt);
+	}
+      else
+	{
+	  // Current simple solution
+	  // Check surface normal
+	  Point clo_norm = faces_[idx]->normal(par[0], par[1]);
+	  if (dist < toptol_.gap)
+	    {
+	      if (normal*clo_norm > 0.0)
+		return true;
+	      else
+		return false;
+	    }
+	  else
+	    {
+	      Point vec = pnt - clo_pnt;
+	      if (clo_norm*vec < 0.0 || vec.length() < toptol_.gap)
+		return true;
+	      else 
+		return false;
+	    }
+	}
+
     }
 
 //===========================================================================

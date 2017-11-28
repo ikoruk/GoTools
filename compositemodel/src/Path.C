@@ -543,4 +543,74 @@ vector<ftEdge*> Path::edgeChain(ftEdge *edg, double angtol, shared_ptr<Vertex>& 
   return edges;
 }
 
+//===========================================================================
+vector<ftEdge*> Path::edgeChainFace(ftSurface *face, shared_ptr<Vertex> vx1,
+				    shared_ptr<Vertex> vx2, 
+				    shared_ptr<Vertex> out_vx)
+//===========================================================================
+{
+  vector<ftEdge*> result;
+  vector<ftEdge*> edges = face->getAllEdgePtrs(0);  // Only outer loop
+
+  // Identify limiting edges
+  size_t ki, kj, kr;
+  for (ki=0; ki<edges.size(); ++ki)
+    {
+      if (edges[ki]->hasVertex(vx1.get()))
+	break;
+    }
+  for (kj=0; kj<edges.size(); ++kj)
+    {
+      if (edges[kj]->hasVertex(vx2.get()))
+	break;
+    }
+
+  if (ki == edges.size() || kj == edges.size())
+    return result;  // Vertex in in edge chain
+
+  // Check if the chain consists of one edge
+  if (ki == kj)
+    result.push_back(edges[ki]);
+  else if (edges[ki]->hasVertex(vx2.get()))
+    result.push_back(edges[ki]);
+  else if (edges[kj]->hasVertex(vx1.get()))
+    result.push_back(edges[kj]);
+  else
+    {
+      // Find chain
+      if (ki > kj)
+	{
+	  std::swap(vx1, vx2);   // Copy
+	  std::swap(ki, kj);
+	}
+      if (edges[ki+1]->hasVertex(vx1.get()))
+	++ki;
+      if (edges[kj-1]->hasVertex(vx2.get()))
+	--kj;
+
+      // Check if the excluded vertex is contained in the
+      // identified chain. In that case extract the negative
+      for (kr=ki; kr<=kj; ++kr)
+	{
+	  if (edges[kr]->hasVertex(out_vx.get()))
+	    break;
+	}
+      if (kr <= kj)
+	{
+	  if (kj < edges.size()-1 && edges[kj+1]->hasVertex(vx2.get()))
+	    ++kj;
+	  if (ki > 0 && edges[ki-1]->hasVertex(vx1.get()))
+	    --ki;
+	  result.insert(result.end(), edges.begin()+kj, edges.end());
+	  if (!(ki == 0 && edges[edges.size()-1]->hasVertex(vx1.get())))
+	    result.insert(result.end(), edges.begin(), edges.begin()+ki+1);
+	}
+      else
+	result.insert(result.end(), edges.begin()+ki, edges.begin()+kj+1);
+    }
+
+  return result;
+}
+
+
 }   // namespace Go

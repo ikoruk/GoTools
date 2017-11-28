@@ -262,7 +262,9 @@ int main(int argc, char* argv[] )
 
       if (block_par && reg)
 	{
-	  shared_ptr<ParamVolume> reg_vol = curr_vol->getRegParVol(degree, true);
+	  int bd_cond[6][2];
+	  shared_ptr<ParamVolume> reg_vol = 
+	    curr_vol->getRegParVol(degree, bd_cond, true);
 	  if (reg_vol.get())
 	    {
 	      reg_vol->writeStandardHeader(ofpar);

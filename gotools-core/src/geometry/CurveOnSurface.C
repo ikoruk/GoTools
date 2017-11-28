@@ -1328,6 +1328,13 @@ bool CurveOnSurface::ensureParCrvExistence(double epsgeo,
       // Check first for elementary curves and surfaces
       shared_ptr<ElementarySurface> elem_sf =
 	dynamic_pointer_cast<ElementarySurface, ParamSurface>(surface_);
+      if (!elem_sf)
+	{
+	  shared_ptr<ParamSurface> parent = surface_->getParentSurface();
+	  if (parent)
+	    elem_sf =
+	      dynamic_pointer_cast<ElementarySurface, ParamSurface>(parent);
+	}
       shared_ptr<ElementaryCurve> elem_cv =
 	dynamic_pointer_cast<ElementaryCurve, ParamCurve>(spacecurve_);
       if (elem_sf.get() && (!elem_cv.get()))
@@ -1548,16 +1555,34 @@ bool CurveOnSurface::ensureParCrvExistence(double epsgeo,
       // along the seam.
       if (start.size() > 1)
       {
+	// // First look for equality of candidates
+	// for (size_t ki=1; ki<start.size(); )
+	//   {
+	//     if (start[0].dist(start[ki]) < 0.1*epspar)
+	//       start.erase(start.begin()+ki);
+	//     else
+	//       ++ki;
+	//   }
+	// if (start.size() > 1)
 	  pickParamPoint(start, startparam(), epsgeo);//epspar);
       }
       if (end.size() > 1)
       {
+	// // First look for equality of candidates
+	// for (size_t ki=1; ki<end.size(); )
+	//   {
+	//     if (end[0].dist(end[ki]) < 0.1*epspar)
+	//       end.erase(end.begin()+ki);
+	//     else
+	//       ++ki;
+	//   }
+	// if (end.size() > 1)
 	  pickParamPoint(end, endparam(), epsgeo);//epspar);
       }
 
 #ifndef NDEBUG
       {
-	  if ((start.size() == 0) && (start_par_pt == NULL) || ((end.size() == 0) && end_par_pt == NULL))
+	  if ((start.size() == 0 && start_par_pt == NULL) || (end.size() == 0 && end_par_pt == NULL))
 	  {
 	      MESSAGE("Oops, missing end point(s).");
 	  }

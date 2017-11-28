@@ -402,11 +402,39 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol1,
 // 
 // 
 vector<shared_ptr<ftVolume> >
+ftVolumeTools::splitVolumes(ftVolume* vol, 
+			    shared_ptr<ParamSurface>& surface, double eps,
+			    int create_all)
+//===========================================================================
+{
+  shared_ptr<ftSurface> face(new ftSurface(surface, -1));
+  return splitVolumes(vol, face, eps, create_all);
+}
+
+//===========================================================================
+// 
+// 
+vector<shared_ptr<ftVolume> >
 ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol, 
 			    shared_ptr<ftSurface>& face, double eps,
 			    int create_all)
 //===========================================================================
 {
+  return splitVolumes(vol.get(), face, eps, create_all);
+}
+
+//===========================================================================
+// 
+// 
+vector<shared_ptr<ftVolume> >
+ftVolumeTools::splitVolumes(ftVolume* vol, 
+			    shared_ptr<ftSurface>& face, double eps,
+			    int create_all)
+//===========================================================================
+{
+#ifdef DEBUG_VOL
+  std::cout << "Entering splitVolumes" << std::endl;
+#endif
   vector<shared_ptr<ftVolume> > result;
 
   // Fetch all boundary surfaces
@@ -414,6 +442,8 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol,
 
   if (shells.size() == 0)
     return result;
+
+  double tol = shells[0]->getTolerances().gap;
 
   size_t ki;
   int kj;
@@ -479,7 +509,49 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol,
     }
 #endif
 
-  // For each surface from the initial face internal to the inital volume: make a copy, swap
+  // Check for identical faces between the surfaces of the initial face
+  // internal to the initial volume that are coincident with a surface in any
+  // of the new volume pieces. These surfaces must be removed
+  int nmb = (!split_models[2].get()) ? 0 : split_models[2]->nmbEntities();
+  for (kj=0; kj<nmb; ++kj)
+    {
+      shared_ptr<ParamSurface> surf1 = split_models[2]->getSurface(kj);
+      int nmb2 = (!split_models[0].get()) ? 0 : split_models[0]->nmbEntities();
+      int kr;
+      for (kr=0; kr<nmb2; ++kr)
+	{
+	  shared_ptr<ParamSurface> surf2 = split_models[0]->getSurface(kr);
+	  Identity ident;
+	  int coinc = ident.identicalSfs(surf1, surf2, tol);
+	  if (coinc > 0)
+	    break;
+	}
+      if (kr < nmb2)
+	{
+	  split_models[2]->removeFace(split_models[2]->getFace(kj));
+	  --kj;
+	  --nmb;
+	}
+      else
+	{
+	  nmb2 = (!split_models[1].get()) ? 0 : split_models[1]->nmbEntities();
+	  for (kr=0; kr<nmb2; ++kr)
+	    {
+	      shared_ptr<ParamSurface> surf2 = split_models[1]->getSurface(kr);
+	      Identity ident;
+	      int coinc = ident.identicalSfs(surf1, surf2, tol);
+	      if (coinc > 0)
+		break;
+	    }
+	  if (kr < nmb2)
+	    {
+	      split_models[2]->removeFace(split_models[2]->getFace(kj));
+	      --kj;
+	      --nmb;
+	    }
+	}
+    }
+  // For each surface from the initial face internal to the initial volume: make a copy, swap
   // the parameter directions of this copy, and add it to the outside
   // part of the other volume.
   // Set also twin pointers between corresponding boundary surfaces
@@ -487,18 +559,57 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol,
   std::cout << "Model 3(2): " << split_models[3]->nmbEntities() << std::endl;
 #endif
 
-  int nmb = (!split_models[2].get()) ? 0 : split_models[2]->nmbEntities();
+  nmb = (!split_models[2].get()) ? 0 : split_models[2]->nmbEntities();
   for (kj=0; kj<nmb; ++kj)
     {
       shared_ptr<ftSurface> face1 = split_models[2]->getFace(kj);
-      face1->setBody(vol.get());
+      face1->setBody(vol);
       if (face1->twin())
 	continue;
-      split_models[0]->append(face1, true, false, true);
       shared_ptr<ParamSurface> surf1 = split_models[2]->getSurface(kj);
       shared_ptr<ParamSurface> surf2(surf1->clone());
       surf2->swapParameterDirection();
 
+      shared_ptr<BoundedSurface> bd_surf1 = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf1);
+      if (bd_surf1.get())
+	surf1 = bd_surf1->underlyingSurface();
+      shared_ptr<BoundedSurface> bd_surf2 = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf2);
+      if (bd_surf2.get())
+	surf2 = bd_surf2->underlyingSurface();
+
+      // Make surface on volume surfaces
+      shared_ptr<ParamVolume> geomvol = vol->getVolume();
+      shared_ptr<ParamSurface> dummy;
+      if (surf1->instanceType() != Class_SurfaceOnVolume)
+	{
+	  shared_ptr<SurfaceOnVolume> vol_sf1 =
+	    shared_ptr<SurfaceOnVolume>(new SurfaceOnVolume(geomvol, dummy, 
+							    surf1, false));
+	  vol_sf1->setCreationHistory(1);  // Mark as internal splitting surface
+	  if (bd_surf1.get())
+	    {
+	      bd_surf1->replaceSurf(vol_sf1);
+	      surf1 = bd_surf1;
+	    }
+	  else
+	    surf1 = vol_sf1;
+	}
+      if (surf2->instanceType() != Class_SurfaceOnVolume)
+	{
+	  shared_ptr<SurfaceOnVolume> vol_sf2 =
+	    shared_ptr<SurfaceOnVolume>(new SurfaceOnVolume(geomvol, dummy, 
+							    surf2, false));
+	  vol_sf2->setCreationHistory(1);
+	  if (bd_surf2.get())
+	    {
+	      bd_surf2->replaceSurf(vol_sf2);
+	      surf2 = bd_surf2;
+	    }
+	  else
+	    surf2 = vol_sf2;
+	}    
 
 #ifdef DEBUG_VOL
       std::ofstream of("curr_face.g2");
@@ -506,8 +617,11 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol,
       surf2->write(of);
 #endif
 
+      shared_ptr<ftSurface> face1_2(new ftSurface(surf1, -1));
+      face1_2->setBody(vol);
+      split_models[0]->append(face1_2, true, false, true);
       shared_ptr<ftSurface> face2(new ftSurface(surf2, -1));
-      face2->setBody(vol.get());
+      face2->setBody(vol);
       split_models[1]->append(face2, true, false, true);
       int ix = split_models[1]->getIndex(face2);
       if (ix >= 0 && create_all == 3)
@@ -546,7 +660,7 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol,
    // Separate surface models into connected sets and make 
   // corresponding volumes
   vector<shared_ptr<SurfaceModel> > sep_models;
-  if (split_models[0] && (create_all == 1 || create_all == 3))
+  if (split_models[0] && (create_all == 1 || create_all >= 3))
     {
     sep_models =split_models[0]->getConnectedModels();
     for (ki=0; ki<sep_models.size(); ++ki)
@@ -559,7 +673,7 @@ ftVolumeTools::splitVolumes(shared_ptr<ftVolume>& vol,
       }
     }
   
-  if (split_models[1] && (create_all == 2 || create_all == 3))
+  if (split_models[1] && (create_all == 2 || create_all >= 3))
     {
       sep_models.clear();
       sep_models = split_models[1]->getConnectedModels();
@@ -824,6 +938,15 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 		}
 	      if (kr < nmb_elem)
 		{
+		  // Include eventual boundary condition information
+		  // in the corresponding element side face
+		  if (curr_face->hasBoundaryConditions())
+		    {
+		      int bd_type, bd;
+		      curr_face->getBoundaryConditions(bd_type, bd);
+		      elem_faces[kr]->setBoundaryConditions(bd_type, bd);
+		    }
+
 		  // Project trimming curves onto element side surface
 		  vector<shared_ptr<CurveOnSurface> > int_cvs;
 		  shared_ptr<BoundedSurface> bd_sf;
@@ -944,8 +1067,11 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
       for (size_t km=0; km<all_int_cvs1[ki].size(); ++km)
 	{
 	  shared_ptr<ParamCurve> tmpcv = all_int_cvs1[ki][km]->parameterCurve();
-	  tmpcv->writeStandardHeader(of01);
-	  tmpcv->write(of01);
+	  if (tmpcv.get())
+	    {
+	      tmpcv->writeStandardHeader(of01);
+	      tmpcv->write(of01);
+	    }
 	}
     }
   for (size_t ki=0; ki<nmb_trim; ++ki)
@@ -953,8 +1079,11 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
       for (size_t km=0; km<all_int_cvs2[ki].size(); ++km)
 	{
 	  shared_ptr<ParamCurve> tmpcv = all_int_cvs2[ki][km]->parameterCurve();
-	  tmpcv->writeStandardHeader(of01);
-	  tmpcv->write(of01);
+	  if (tmpcv.get())
+	    {
+	      tmpcv->writeStandardHeader(of01);
+	      tmpcv->write(of01);
+	    }
 	}
     }
 #endif
@@ -1011,8 +1140,11 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
       for (size_t km=0; km<all_int_cvs1[ki].size(); ++km)
 	{
 	  shared_ptr<ParamCurve> tmpcv = all_int_cvs1[ki][km]->parameterCurve();
-	  tmpcv->writeStandardHeader(of01_2);
-	  tmpcv->write(of01_2);
+	  if (tmpcv.get())
+	    {
+	      tmpcv->writeStandardHeader(of01_2);
+	      tmpcv->write(of01_2);
+	    }
 	}
     }
   for (size_t ki=0; ki<nmb_trim; ++ki)
@@ -1020,8 +1152,11 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
       for (size_t km=0; km<all_int_cvs2[ki].size(); ++km)
 	{
 	  shared_ptr<ParamCurve> tmpcv = all_int_cvs2[ki][km]->parameterCurve();
-	  tmpcv->writeStandardHeader(of01_2);
-	  tmpcv->write(of01_2);
+	  if (tmpcv.get())
+	    {
+	      tmpcv->writeStandardHeader(of01_2);
+	      tmpcv->write(of01_2);
+	    }
 	}
     }
 #endif
@@ -1038,9 +1173,12 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
     if (!sfs2[kr].get())
       sfs2[kr] = faces[kr]->surface();
 
+  // Number of element side surfaces
+  int nmb_split1 = sfs1.size();
+
   shared_ptr<SurfaceModel> elem_shell(new SurfaceModel(elem_faces, eps));
   shared_ptr<ftVolume> elem_vol2(new ftVolume(elem_vol, elem_shell, -1));
-  vector<vector<shared_ptr<ParamSurface> > > split_groups(4);
+  vector<vector<pair<shared_ptr<ParamSurface>, int> > > split_groups(4);
   vector<bool> at_bd2(sfs2.size(), false);
   SurfaceModelUtils::sortTrimmedSurfaces(all_int_cvs1, sfs1, at_bd1, elem_vol2.get(), 
 					 all_int_cvs2, sfs2, at_bd2, trim_vol, 
@@ -1055,7 +1193,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
     {
       for (size_t ki=0; ki<split_groups[kr].size(); ++ki)
 	{
-	  shared_ptr<ParamSurface> surf = split_groups[kr][ki];
+	  shared_ptr<ParamSurface> surf = split_groups[kr][ki].first;
 	  shared_ptr<SurfaceOnVolume> vol_sf = 
 	    dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(surf);
 	  if (!vol_sf.get())
@@ -1075,41 +1213,56 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
     }
 
    // Add trimming face pieces to the element surfaces
+  double len_tol = 1.5*toptol.neighbour;  // Leave a little slack
   for (size_t ki=0; ki<split_groups[2].size(); ++ki)
     {
       // Make oppositely oriented copy
-      shared_ptr<ParamSurface> surf1 = split_groups[2][ki];
+      int id = split_groups[2][ki].second;
+      shared_ptr<ParamSurface> surf1 = split_groups[2][ki].first;
       shared_ptr<ParamSurface> surf2(surf1->clone());
       surf2->swapParameterDirection();
 
-      // Add surface to element groups
-      split_groups[0].push_back(surf1);
-      split_groups[1].push_back(surf2);
+      // Add surface to element groups, small ones first to improve
+      // stability of topology analysis
+      double len_u, len_v, min_u, max_u, min_v, max_v;
+      surf1->estimateSfSize(len_u, min_u, max_u, len_v, min_v, max_v);
+      if (len_u < len_tol || len_v < len_tol)
+	{
+	  split_groups[0].insert(split_groups[0].begin(),
+				 make_pair(surf1,nmb_split1+id));
+	  split_groups[1].insert(split_groups[1].begin(),
+				 make_pair(surf2, nmb_split1+id));
+	}
+      else
+	{
+	  split_groups[0].push_back(make_pair(surf1, nmb_split1+id));
+	  split_groups[1].push_back(make_pair(surf2, nmb_split1+id));
+	}
     }
   
   // Create surface models
   vector<shared_ptr<SurfaceModel> > surf_mod;
   vector<int> inside;
   double eps2 = 1.0e-6;
-  double len_tol = 1.5*toptol.neighbour;  // Leave a little slack
   if (split_groups[0].size() > 0)
     {
       // Estimate minimum surface size
       double min_len = HUGE, min_len_all = HUGE;
       vector<size_t> sliver_ix;
+      size_t small_ix = 0;
       for (size_t ki=0; ki<split_groups[0].size(); ++ki)
 	{
 	  // Fetch surface category
 	  bool elem_face = false;  // Default
 	  
 	  double len_u, len_v, min_u, max_u, min_v, max_v;
-	  split_groups[0][ki]->estimateSfSize(len_u, min_u, max_u, len_v,
+	  split_groups[0][ki].first->estimateSfSize(len_u, min_u, max_u, len_v,
 					      min_v, max_v);
 
 	  shared_ptr<BoundedSurface> bd_sf = 
-	    dynamic_pointer_cast<BoundedSurface,ParamSurface>(split_groups[0][ki]);
+	    dynamic_pointer_cast<BoundedSurface,ParamSurface>(split_groups[0][ki].first);
 	  shared_ptr<SurfaceOnVolume> vol_sf = 
-	    dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(split_groups[0][ki]);
+	    dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(split_groups[0][ki].first);
 	  
 	  if (bd_sf.get())
 	    {
@@ -1143,12 +1296,23 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 		min_len_all = std::min(min_len_all, min_cvlen);  
 	    }
 
+	  
+	  size_t tmp_ix = ki;
+	  if (len_u < len_tol || len_v < len_tol)
+	    {
+	      if ((int)ki != small_ix)
+		// Rearrange face sequence to get the small ones first
+		std::swap(split_groups[0][small_ix], split_groups[0][ki]);
+	      tmp_ix = small_ix;
+	      small_ix++;
+	    }
+	      
 	  double fac = 2.0;
 	  if (std::max(max_u,max_v) < fac*toptol.neighbour && 
 	      std::min(max_u,max_v) < toptol.neighbour && elem_face == false)
 	    min_len = std::min(min_len, std::min(len_u, len_v));
 	  else if (max_u < toptol.neighbour || max_v < toptol.neighbour)
-	    sliver_ix.push_back(ki);
+	    sliver_ix.push_back(tmp_ix);
 	  else
 	    min_len = std::min(min_len, std::min(len_u, len_v));
 	  min_len_all = std::min(min_len_all, std::min(len_u, len_v));
@@ -1174,13 +1338,32 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	    split_groups[0].erase(split_groups[0].begin()+sliver_ix[sliver_ix.size()-ki-1]);
 	}
 
+      // Create faces
+      vector<shared_ptr<ftSurface> > split_faces1;
+      for (size_t ki=0; ki<split_groups[0].size(); ++ki)
+	{
+	  shared_ptr<ftSurface> tmp_face(new ftSurface(split_groups[0][ki].first, -1));
+
+	  // Set eventual boundary conditions. First fetch original face
+	  int id = split_groups[0][ki].second;
+	  shared_ptr<ftSurface> tmp_face2 = (id < nmb_split1) ? elem_faces[id] :
+	    faces[id-nmb_split1];
+	  if (tmp_face2->hasBoundaryConditions())
+	    {
+	      int bd_type, bd;
+	      tmp_face2->getBoundaryConditions(bd_type, bd);
+	      tmp_face->setBoundaryConditions(bd_type, bd);
+	    }
+	  split_faces1.push_back(tmp_face);
+	}
+
       shared_ptr<SurfaceModel> mod;
       bool failed = false;
       try {
 	mod = shared_ptr<SurfaceModel>(new SurfaceModel(toptol.gap, gap,
 							neighbour,
 							toptol.kink, toptol.bend,
-							split_groups[0]));
+							split_faces1));
       }
       catch (...)
 	{
@@ -1198,19 +1381,20 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
       // Estimate minimum surface size
       double min_len = HUGE, min_len_all = HUGE;
       vector<size_t> sliver_ix;
+      size_t small_ix = 0;
      for (size_t ki=0; ki<split_groups[1].size(); ++ki)
 	{
 	  // Fetch surface category
 	  bool elem_face = false;  // Default
 	  
 	  double len_u, len_v, min_u, max_u, min_v, max_v;
-	  split_groups[1][ki]->estimateSfSize(len_u, min_u, max_u, len_v,
+	  split_groups[1][ki].first->estimateSfSize(len_u, min_u, max_u, len_v,
 					      min_v, max_v);
 
 	  shared_ptr<BoundedSurface> bd_sf = 
-	    dynamic_pointer_cast<BoundedSurface,ParamSurface>(split_groups[1][ki]);
+	    dynamic_pointer_cast<BoundedSurface,ParamSurface>(split_groups[1][ki].first);
 	  shared_ptr<SurfaceOnVolume> vol_sf = 
-	    dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(split_groups[1][ki]);
+	    dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(split_groups[1][ki].first);
 	  
 	  if (bd_sf.get())
 	    {
@@ -1243,6 +1427,16 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 		  min_cvlen < len_tol && std::min(len_u, len_v) >= toptol.neighbour)
 		min_len_all = std::min(min_len_all, min_cvlen);  
 	    }
+	  
+	  size_t tmp_ix = ki;
+	  if (len_u < len_tol || len_v < len_tol)
+	    {
+	      if ((int)ki != small_ix)
+		// Rearrange face sequence to get the small ones first
+		std::swap(split_groups[1][small_ix], split_groups[1][ki]);
+	      tmp_ix = small_ix;
+	      small_ix++;
+	    }
 
 	  double fac = 2.0;
 	  if (std::max(max_u,max_v) < fac*toptol.neighbour && 
@@ -1251,7 +1445,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  else if (max_u < toptol.neighbour && max_v < toptol.neighbour)
 	    min_len = std::min(min_len, std::min(len_u, len_v));
 	  else if (max_u < toptol.neighbour || max_v < toptol.neighbour)
-	    sliver_ix.push_back(ki);
+	    sliver_ix.push_back(tmp_ix);
 	  else
 	    min_len = std::min(min_len, std::min(len_u, len_v));
 	  min_len_all = std::min(min_len_all, std::min(len_u, len_v));
@@ -1277,13 +1471,32 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	    split_groups[1].erase(split_groups[1].begin()+sliver_ix[sliver_ix.size()-ki-1]);
 	}
 
+      // Create faces
+      vector<shared_ptr<ftSurface> > split_faces2;
+      for (size_t ki=0; ki<split_groups[1].size(); ++ki)
+	{
+	  shared_ptr<ftSurface> tmp_face(new ftSurface(split_groups[1][ki].first, -1));
+
+	  // Set eventual boundary conditions. First fetch original face
+	  int id = split_groups[1][ki].second;
+	  shared_ptr<ftSurface> tmp_face2 = (id < nmb_split1) ? elem_faces[id] :
+	    faces[id-nmb_split1];
+	  if (tmp_face2->hasBoundaryConditions())
+	    {
+	      int bd_type, bd;
+	      tmp_face2->getBoundaryConditions(bd_type, bd);
+	      tmp_face->setBoundaryConditions(bd_type, bd);
+	    }
+	  split_faces2.push_back(tmp_face);
+	}
+
       shared_ptr<SurfaceModel> mod;
       bool failed = false;
       try {
 	mod = shared_ptr<SurfaceModel>(new SurfaceModel(toptol.gap, gap,
 							neighbour,
 							toptol.kink, toptol.bend,
-							split_groups[1]));
+							split_faces2));
       }
       catch (...)
 	{
@@ -1305,6 +1518,8 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
       for (size_t kj=0; kj<sep_models.size(); ++kj)
       {
 	shared_ptr<ftVolume> curr(new ftVolume(elem_vol, sep_models[kj]));
+	if (trim_vol->hasMaterialInfo())
+	  curr->setMaterial(trim_vol->getMaterial());
 	result.push_back(curr);
 	is_inside.push_back(inside[ki]);
       }
@@ -1397,7 +1612,9 @@ ftVolumeTools::updateWithSplitFaces(shared_ptr<SurfaceModel> shell,
 	      }
 	      catch(...)
 		{
+#ifdef DEBUG
 		  std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 		}
 	      if (trim_sfs.size() > 1)
 		{
@@ -1474,7 +1691,9 @@ ftVolumeTools::updateWithSplitFaces(shared_ptr<SurfaceModel> shell,
   
       if (surf1_split.size() != 2)
 	{
+#ifdef DEBUG
 	  std::cout << "Nmb split sfs1: " << surf1_split.size() << std::endl;
+#endif
 	}
 
       // Trim face2
@@ -1483,7 +1702,9 @@ ftVolumeTools::updateWithSplitFaces(shared_ptr<SurfaceModel> shell,
 
       if (surf2_split.size() != 2)
 	{
+#ifdef DEBUG
 	  std::cout << "Nmb split sfs2: " << surf2_split.size() << std::endl;
+#endif
 	}
     
       // Replace surfaces only if both faces are split in an inner ant outer part
@@ -1890,8 +2111,10 @@ ftVolumeTools::checkCoincCurves(vector<shared_ptr<SplineCurve> >& bd_cvs,
 	      if (len < tol)
 		{
 		  int_cvs1[kj].erase(int_cvs1[kj].begin()+kr);
+#ifdef DEBUG
 		  std::cout << "ftVolumeTools::checkCoincCurves, remove - len = " << len;
 		  std::cout << ", dist = (" << cd1 << "," << cd2 << ")" << std::endl;
+#endif
 		  //++kr;
 		}
 	      else //if (false)
@@ -1906,8 +2129,10 @@ ftVolumeTools::checkCoincCurves(vector<shared_ptr<SplineCurve> >& bd_cvs,
 		  // int_cvs1[kj][kr] = tmp_cv;
 		  // ++kr;
 		  int_cvs1[kj].erase(int_cvs1[kj].begin()+kr);
+#ifdef DEBUG
 		  std::cout << "ftVolumeTools::checkCoincCurves, remove2 - len = " << len;
 		  std::cout << ", dist = (" << cd1 << "," << cd2 << ")" << std::endl;
+#endif
 		}
 	      // else
 	      // 	++kr;
@@ -1958,8 +2183,10 @@ ftVolumeTools::checkCoincCurves(vector<shared_ptr<SplineCurve> >& bd_cvs,
 	      if (len < tol)
 		{
 		  int_cvs2[kj].erase(int_cvs2[kj].begin()+kr);
+#ifdef DEBUG
 		  std::cout << "ftVolumeTools::checkCoincCurves, remove - len = " << len;
 		  std::cout << ", dist = (" << cd1 << "," << cd2 << ")" << std::endl;
+#endif
 		  //++kr;
 		}
 	      else //if (false)
@@ -1973,8 +2200,10 @@ ftVolumeTools::checkCoincCurves(vector<shared_ptr<SplineCurve> >& bd_cvs,
 		  tmp_cv->ensureParCrvExistence(tol);
 		  int_cvs2[kj][kr] = tmp_cv;
 		  ++kr;
+#ifdef DEBUG
 		  std::cout << "ftVolumeTools::checkCoincCurves, move - len = " << len;
 		  std::cout << ", dist = (" << cd1 << "," << cd2 << ")" << std::endl;
+#endif
 		  // int_cvs2[kj].erase(int_cvs2[kj].begin()+kr);
 		}
 	      // else 

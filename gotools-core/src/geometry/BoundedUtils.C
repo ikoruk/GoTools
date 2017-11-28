@@ -111,6 +111,8 @@ BoundedUtils::intersectWithSurface(CurveOnSurface& curve,
 //===========================================================================
 {
   double int_tol = 0.1*epsge; //1e-06;
+  double tdel = curve.endparam() - curve.startparam();
+  double delfac = 0.01;
 
     // We extract boundary loop, and check for intersections.
     // We do not handle trimming of trimmed surfaces with holes.
@@ -224,27 +226,57 @@ BoundedUtils::intersectWithSurface(CurveOnSurface& curve,
 	  to_par = curve.endparam();
 	double med_par = 0.5*(from_par + to_par);
 	Point med_pt = first_curve->ParamCurve::point(med_par);
-	bool is_in_domain = false;
-	try {
-	  is_in_domain = domain.isInDomain(Vector2D(med_pt[0], med_pt[1]), 
-					   knot_diff_tol);
-	}
-	catch (...)
+	int is_in_domain = -1;
+	if (to_par-from_par < delfac*tdel)
 	  {
-	    if (len > 10.0*epsge)
-	      THROW("Could not trim intersection curve with surface boundary");
-	    else
-	      is_in_domain = false;
+	    // Extra testing
+	    Point med3 = curve.ParamCurve::point(med_par);
+	    Point med_sf = curve.underlyingSurface()->point(med_pt[0],med_pt[1]);
+	    double med_dist = med3.dist(med_sf);
+	    if (med_dist > epsge)
+	      {
+		// Perform test in geometry space
+		double u1, u2, v1, v2, d1, d2;
+		Point clo1, clo2;
+		bounded_surf.closestBoundaryPoint(med3, u1, v1, clo1, 
+						  d1, epsge);
+		if (d1 < epsge)
+		  is_in_domain = 2;
+		else
+		  {
+		    bounded_surf.closestPoint(med3, u2, v2, clo2, 
+					      d2, epsge);
+		    if (d2 < epsge)
+		      is_in_domain = 1;
+		    else
+		      is_in_domain = 0;
+		  }
+	      }
 	  }
-	if (is_in_domain)
+	if (is_in_domain < 0)
 	  {
-	    // inside_segments.push_back(shared_ptr<CurveOnSurface>
-	    // 			    (dynamic_cast<CurveOnSurface*>
-	    // 			     (curve.subCurve(from_par, to_par))));
-	    int_seg_type[j] = 2;  // Inside segment
+	    try {
+	      is_in_domain = domain.isInDomain2(Vector2D(med_pt[0], med_pt[1]), 
+						knot_diff_tol);
+	    }
+	    catch (...)
+	      {
+		if (len > 10.0*epsge)
+		  THROW("Could not trim intersection curve with surface boundary");
+		else
+		  is_in_domain = 0;
+	      }
 	  }
-	else
-	  int_seg_type[j] = 1;    // Outside segment
+	int_seg_type[j] = is_in_domain + 1;
+	// if (is_in_domain == 1)
+	//   {
+	//     // inside_segments.push_back(shared_ptr<CurveOnSurface>
+	//     // 			    (dynamic_cast<CurveOnSurface*>
+	//     // 			     (curve.subCurve(from_par, to_par))));
+	//     int_seg_type[j] = 2;  // Inside segment
+	//   }
+	// else
+	//   int_seg_type[j] = 1;    // Outside segment
     }
 
     // Simplify segmentation by joining segments of the same type (inside/outside)
@@ -270,19 +302,19 @@ BoundedUtils::intersectWithSurface(CurveOnSurface& curve,
 		if (to_par - from_par > knot_diff_tol && len > epsge) 
 		  {
 		    Point med_pt = first_curve->ParamCurve::point(0.5*(from_par+to_par));
-		    bool is_in_domain = false;
+		    int is_in_domain = 0;
 		    try {
-		      is_in_domain = domain.isInDomain(Vector2D(med_pt[0], med_pt[1]), 
-						       knot_diff_tol);
+		      is_in_domain = domain.isInDomain2(Vector2D(med_pt[0], med_pt[1]), 
+							knot_diff_tol);
 		    }
 		    catch (...)
 		      {
 			if (len > 10.0*epsge)
 			  THROW("Could not trim intersection curve with surface boundary");
 			else
-			  is_in_domain = false;
+			  is_in_domain = 0;
 		      }
-		    type = (is_in_domain) ? 2 : 1;
+		    type = (is_in_domain >= 1) ? 2 : 1;
 		  }
 	      }
 	    else
@@ -311,7 +343,7 @@ BoundedUtils::intersectWithSurface(CurveOnSurface& curve,
     // Extract segments
     for (j=1; j<int(all_int_params.size()); ++j)
       {
-	if (int_seg_type[j-1] == 2)
+	if (int_seg_type[j-1] >= 2)
 	  {
 	    inside_segments.push_back(shared_ptr<CurveOnSurface>
 				      (dynamic_cast<CurveOnSurface*>
@@ -2859,6 +2891,7 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 		}
 	    }
 	}
+
 	vector<shared_ptr<CurveOnSurface> > new_cvs = 
 	  intersectWithSurface(*cvs1[ki], *bd_sf1, /*0.1**/epsge);
 	new_cvs1.insert(new_cvs1.end(), new_cvs.begin(), new_cvs.end());
@@ -2872,10 +2905,14 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 	    {
 	      shared_ptr<ParamCurve> tmp_cv = cvs2[other_ind]->spaceCurve();
 	      cvs2[other_ind]->unsetSpaceCurve();
-	      cvs2[other_ind]->ensureSpaceCrvExistence(epsge);
-	      DirectionCone cone1 = tmp_cv->directionCone();
-	      DirectionCone cone2 = cvs2[other_ind]->spaceCurve()->directionCone();
-	      if (cone2.greaterThanPi() ||
+	      bool found = cvs2[other_ind]->ensureSpaceCrvExistence(epsge);
+	      DirectionCone cone1, cone2;
+	      if (found)
+		{
+		  cone1 = tmp_cv->directionCone();
+		  cone2 = cvs2[other_ind]->spaceCurve()->directionCone();
+		}
+	      if (!found || cone2.greaterThanPi() ||
 		  (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol))
 		{
 #ifdef DEBUG
@@ -2888,10 +2925,14 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 	    {
 	      shared_ptr<ParamCurve> tmp_cv = cvs2[other_ind]->parameterCurve();
 	      cvs2[other_ind]->unsetParameterCurve();
-	      cvs2[other_ind]->ensureParCrvExistence(epsge);
-	      DirectionCone cone1 = tmp_cv->directionCone();
-	      DirectionCone cone2 = cvs1[ki]->parameterCurve()->directionCone();
-	      if (cone2.greaterThanPi() ||
+	      bool found = cvs2[other_ind]->ensureParCrvExistence(epsge);
+	      DirectionCone cone1, cone2;
+	      if (found)
+		{
+		  cone1 = tmp_cv->directionCone();
+		  cone2 = cvs1[ki]->parameterCurve()->directionCone();
+		}
+	      if (!found || cone2.greaterThanPi() ||
 		  (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol))
 		{
 #ifdef DEBUG
@@ -2916,25 +2957,40 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
     // We then make sure that the resulting cvs span the same spatial pts.
     double knot_diff_tol = 1e-05;
     for (ki = 0; ki < int(new_cvs1.size()); ++ki) {
-	Point start1 = new_cvs1[ki]->ParamCurve::point(new_cvs1[ki]->startparam());
-	Point end1 = new_cvs1[ki]->ParamCurve::point(new_cvs1[ki]->endparam());
+      double t1 = new_cvs1[ki]->startparam();
+      double t2 = new_cvs1[ki]->endparam();
+	Point start1 = new_cvs1[ki]->ParamCurve::point(t1);
+	Point end1 = new_cvs1[ki]->ParamCurve::point(t2);
 	if (start1.dist(end1) < epsge)
-	  continue;
+	  {
+	    // Check mid point
+	    Point mid1 = new_cvs1[ki]->ParamCurve::point(0.5*(t1+t2));
+	    if (mid1.dist(start1) < epsge && mid1.dist(end1) < epsge)
+	      continue;
+	  }
 	// We split cvs which end in the interior of another cv.
 	for (kj = 0; kj < int(new_cvs2.size()); ++kj) {
-	    Point start2 = new_cvs2[kj]->ParamCurve::point(new_cvs2[kj]->startparam());
-	    Point end2 = new_cvs2[kj]->ParamCurve::point(new_cvs2[kj]->endparam());
+	  double t3 = new_cvs2[kj]->startparam();
+	  double t4 = new_cvs2[kj]->endparam();
+	  Point start2 = new_cvs2[kj]->ParamCurve::point(t3);
+	  Point end2 = new_cvs2[kj]->ParamCurve::point(t4);
 	    if (start2.dist(end2) < epsge)
-	      continue;
+	      {
+		// Check mid point
+		Point mid2 = new_cvs2[kj]->ParamCurve::point(0.5*(t3+t4));
+		if (mid2.dist(start2) < epsge && mid2.dist(end2) < epsge)
+		  continue;
+	      }
+
 	    // We then perform closest pt calculations for all end pts.
 	    double clo_t, clo_dist;
 	    Point clo_pt;
 	    double len1 = new_cvs1[ki]->estimatedCurveLength();
 	    new_cvs1[ki]->ParamCurve::closestPoint(end2, clo_t, clo_pt, clo_dist);
-	    double len1_1 = new_cvs1[ki]->estimatedCurveLength(new_cvs1[ki]->startparam(), 
-							       clo_t);
-	    double len1_2 = new_cvs1[ki]->estimatedCurveLength(clo_t,
-							       new_cvs1[ki]->endparam());
+	    double len1_1 = 
+	      new_cvs1[ki]->estimatedCurveLength(new_cvs1[ki]->startparam(), clo_t);
+	    double len1_2 = 
+	      new_cvs1[ki]->estimatedCurveLength(clo_t, new_cvs1[ki]->endparam());
 	    if ((clo_dist < epsge && len1 > epsge && len1_1 > epsge && len1_2 > epsge) && 
 		((clo_t - knot_diff_tol > new_cvs1[ki]->startparam()) &&
 		 (clo_t + knot_diff_tol < new_cvs1[ki]->endparam()))) 
@@ -2945,7 +3001,12 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 		    (new_cvs1[ki]->subCurve(new_cvs1[ki]->startparam(), clo_t));
 	    }
 	    new_cvs1[ki]->ParamCurve::closestPoint(start2, clo_t, clo_pt, clo_dist);
-	    if ((clo_dist < epsge && len1 > epsge) && 
+	    double len1_3 = 
+	      new_cvs1[ki]->estimatedCurveLength(new_cvs1[ki]->startparam(), clo_t);
+	    double len1_4 = 
+	      new_cvs1[ki]->estimatedCurveLength(clo_t, new_cvs1[ki]->endparam());	    
+	    if ((clo_dist < epsge && len1 > epsge &&  
+		 len1_3 > epsge && len1_4 > epsge) && 
 		((clo_t - knot_diff_tol > new_cvs1[ki]->startparam()) &&
 		 (clo_t + knot_diff_tol < new_cvs1[ki]->endparam()))) {
 		shared_ptr<CurveOnSurface> new_cv(new_cvs1[ki]->subCurve(clo_t, new_cvs1[ki]->endparam()));
@@ -2957,13 +3018,12 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 	    if (len2 < epsge)
 	      continue;
 	    new_cvs2[kj]->ParamCurve::closestPoint(end1, clo_t, clo_pt, clo_dist);
-	    double len2_1 = new_cvs2[kj]->estimatedCurveLength(new_cvs2[kj]->startparam(), 
-							       clo_t);
-	    double len2_2 = new_cvs2[kj]->estimatedCurveLength(clo_t,
-							       new_cvs2[kj]->endparam());
-	    if (len2_1 < epsge || len2_2 < epsge)
-	      continue;
-	    if ((clo_dist < epsge) && ((clo_t - knot_diff_tol > new_cvs2[kj]->startparam()) &&
+	    double len2_1 = 
+	      new_cvs2[kj]->estimatedCurveLength(new_cvs2[kj]->startparam(), clo_t);
+	    double len2_2 = 
+	      new_cvs2[kj]->estimatedCurveLength(clo_t, new_cvs2[kj]->endparam());
+	    if ((clo_dist < epsge && len2_1 > epsge && len2_2 > epsge) && 
+		((clo_t - knot_diff_tol > new_cvs2[kj]->startparam()) &&
 				       (clo_t + knot_diff_tol < new_cvs2[kj]->endparam()))) {
 		shared_ptr<CurveOnSurface> new_cv(new_cvs2[kj]->subCurve(clo_t, new_cvs2[kj]->endparam()));
 		new_cvs2.insert(new_cvs2.begin() + kj + 1, new_cv);
@@ -2971,8 +3031,14 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 		    (new_cvs2[kj]->subCurve(new_cvs2[kj]->startparam(), clo_t));
 	    }
 	    new_cvs2[kj]->ParamCurve::closestPoint(start1, clo_t, clo_pt, clo_dist);
-	    if ((clo_dist < epsge) && ((clo_t - knot_diff_tol > new_cvs2[kj]->startparam()) &&
-				       (clo_t + knot_diff_tol < new_cvs2[kj]->endparam()))) {
+	    double len2_3 = 
+	      new_cvs2[kj]->estimatedCurveLength(new_cvs2[kj]->startparam(), clo_t);
+	    double len2_4 = 
+	      new_cvs2[kj]->estimatedCurveLength(clo_t, new_cvs2[kj]->endparam());
+
+	    if ((clo_dist < epsge && len2_3 > epsge && len2_4 > epsge) && 
+		((clo_t - knot_diff_tol > new_cvs2[kj]->startparam()) &&
+		 (clo_t + knot_diff_tol < new_cvs2[kj]->endparam()))) {
 		shared_ptr<CurveOnSurface> new_cv(new_cvs2[kj]->subCurve(clo_t, new_cvs2[kj]->endparam()));
 		new_cvs2.insert(new_cvs2.begin() + kj + 1, new_cv);
 		new_cvs2[kj] = shared_ptr<CurveOnSurface>
@@ -4673,12 +4739,16 @@ void consistentIntersectionDir(ParamCurve& inters_pcv,
 				 double epsgeo)
 //===========================================================================
 {
+  if (!sf_cv1->hasParameterCurve())
+    return; // Nothing to do
   Point par_pt = sf_cv1->parameterCurve()->point(sf_cv1->startparam());
   Point sf_normal;
   sf_cv1->underlyingSurface()->normal(sf_normal, par_pt[0], par_pt[1]);
   vector<Point> space_pt = sf_cv1->spaceCurve()->point(sf_cv1->startparam(), 1);
   Point tangent = space_pt[1];
   tangent.normalize_checked();
+  if (!sf_cv2->hasParameterCurve())
+    return; // Nothing to do
   Point other_par_pt1 = sf_cv2->parameterCurve()->point(sf_cv2->startparam());
   Point other_par_pt2 = sf_cv2->parameterCurve()->point(sf_cv2->endparam());
   vector<Point> other_space_pt1 = 

@@ -43,6 +43,7 @@
 #include "GoTools/compositemodel/Body.h"
 #include "GoTools/compositemodel/EdgeVertex.h"
 #include "GoTools/compositemodel/Path.h"
+#include "GoTools/compositemodel/SurfaceModelUtils.h"
 //#include "GoTools/topology/tpTopologyTable.h"
 #include "GoTools/geometry/SurfaceTools.h"
 #include "GoTools/geometry/SplineCurve.h"
@@ -51,7 +52,7 @@
 #include <fstream>
 #include <cstdlib>
 
-#define DEBUG_REG
+//#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -174,6 +175,15 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
       nmb_faces = reRegularizeFaces(faces);
       if (corr_faces_.size() > 0)
 	corr_faces_.clear();
+#ifdef DEBUG_REG
+      std::ofstream ofpre3("pre_reg3.g2");
+      for (int kj=0; kj<nmb_faces; ++kj)
+	{
+	  shared_ptr<ParamSurface> tmp = faces[kj]->surface();
+	  tmp->writeStandardHeader(ofpre3);
+	  tmp->write(ofpre3);
+	}
+#endif
     }
   
   // Set face correspondance
@@ -263,6 +273,13 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   
   // Special case treatment providing prioritized vertices for split
   defineSplitVx(faces, allow_deg, other_face, perm);
+#ifdef DEBUG_REG
+  std::cout << "Nmb vertex pri: " << vx_pri_.size() << std::endl;
+  std::cout << "Perm: ";
+  for (size_t ka=0; ka<perm.size(); ++ka)
+    std::cout << perm[ka] << " ";
+  std::cout << std::endl;
+#endif
   
   // for (kj=0; kj<(int)perm.size(); ++kj)
   //   std::cout << perm[kj] << " ";
@@ -2263,6 +2280,44 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
 
 //==========================================================================
 vector<shared_ptr<Vertex> >
+RegularizeFaceSet::getTwoFaceCorners(shared_ptr<ftSurface> face, double angtol)
+//==========================================================================
+{
+  // Fetch all corner vertices
+   vector<shared_ptr<Vertex> > vx = face->getCornerVertices(angtol, 0);
+
+   // Dismiss the ones where more than two faces meet
+   Body *bd = face->getBody();
+   int nmb_vx = (int)vx.size();
+   for (size_t ki=0; ki<vx.size(); )
+     {
+       vector<ftSurface*> vx_faces = vx[ki]->faces(bd);
+       vector<ftEdge*> vx_edgs = vx[ki]->getFaceEdges(face.get());
+       double ang = 0.5*M_PI;
+       if (vx_edgs.size() == 2)
+	 {
+	   Point tan1 = 
+	     vx_edgs[0]->tangent(vx_edgs[0]->parAtVertex(vx[ki].get()));
+	   Point tan2 = 
+	     vx_edgs[1]->tangent(vx_edgs[1]->parAtVertex(vx[ki].get()));
+	   ang = tan1.angle(tan2);
+	 }
+       if (nmb_vx == 5 && vx_faces.size() == 3 && ang < 2.0*angtol)
+	 {
+	   // Special case. Keep vertex
+	   ++ki;
+	 }
+       else if (vx_faces.size() > 2)
+	 vx.erase(vx.begin()+ki);
+       else
+	 ++ki;
+     }
+
+   return vx;
+}
+
+//==========================================================================
+vector<shared_ptr<Vertex> >
 RegularizeFaceSet::getTjointVertices(shared_ptr<ftSurface> face, double angtol)
 //==========================================================================
 {
@@ -2681,65 +2736,68 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	    }
 
 	  // Do the splitting
-	  for (size_t kr=0; kr<split_edgs.size(); ++kr)
+	  if (ix1 >= 0 || split_edgs.size() == edgs.size() ||
+	      curr_nmb_corner > 5)
 	    {
-	      done = true;
-	      set_deg = true;   // Must test 
-
-	      // Split selected edge
-	      shared_ptr<ftEdge> newedge = split_edgs[kr]->split2(split_par[kr]);
-
-	      // Check
-	      shared_ptr<Vertex> tmp_vx = split_edgs[kr]->getCommonVertex(newedge.get());
-	      tmp_vx->checkVertexTopology();
-
-	      // Prioritize associated face
-	      for (int ki=0; ki<(int)perm.size(); ++ki)
+	      for (size_t kr=0; kr<split_edgs.size(); ++kr)
 		{
-		  if (split_faces[kr] == faces[perm[ki]].get() && ki > 0)
+		  done = true;
+		  set_deg = true;   // Must test 
+
+		  // Split selected edge
+		  shared_ptr<ftEdge> newedge = split_edgs[kr]->split2(split_par[kr]);
+
+		  // Check
+		  shared_ptr<Vertex> tmp_vx = split_edgs[kr]->getCommonVertex(newedge.get());
+		  tmp_vx->checkVertexTopology();
+
+		  // Prioritize associated face
+		  for (int ki=0; ki<(int)perm.size(); ++ki)
 		    {
-		      perm.insert(perm.begin()+ix2, perm[ki]);
-		      perm.erase(perm.begin()+ki+1);
+		      if (split_faces[kr] == faces[perm[ki]].get() && ki > 0)
+			{
+			  perm.insert(perm.begin()+ix2, perm[ki]);
+			  perm.erase(perm.begin()+ki+1);
+			}
 		    }
+
+		  // Store information
+		  shared_ptr<Vertex> vx = split_edgs[kr]->getCommonVertex(newedge.get());
+		  vx_pri_.push_back(make_pair(vx, perm[ix2++]));
 		}
 
-	      // Store information
-	      shared_ptr<Vertex> vx = split_edgs[kr]->getCommonVertex(newedge.get());
-	      vx_pri_.push_back(make_pair(vx, perm[ix2++]));
-	    }
-
-	  if (split_faces.size() == 1)
-	    {
-	      // Downprioritize opposite face
-	      for (size_t kj=0; kj<corr_faces_.size(); ++kj)
+	      if (split_faces.size() == 1)
 		{
-		  int other_ix = -1;
-		  if (corr_faces_[kj].first == perm[ix2-1])
-		    other_ix = corr_faces_[kj].second;
-		  else if (corr_faces_[kj].second == perm[ix2-1])
-		    other_ix = corr_faces_[kj].first;
-		  if (other_ix >= 0)
+		  // Downprioritize opposite face
+		  for (size_t kj=0; kj<corr_faces_.size(); ++kj)
 		    {
-		      for (int ki=ix2; ki<(int)perm.size(); ++ki)
+		      int other_ix = -1;
+		      if (corr_faces_[kj].first == perm[ix2-1])
+			other_ix = corr_faces_[kj].second;
+		      else if (corr_faces_[kj].second == perm[ix2-1])
+			other_ix = corr_faces_[kj].first;
+		      if (other_ix >= 0)
 			{
-			  if (perm[ki] == other_ix)
+			  for (int ki=ix2; ki<(int)perm.size(); ++ki)
 			    {
-			      perm.push_back(perm[ki]);
-			      perm.erase(perm.begin()+ki);
-			      break;
+			      if (perm[ki] == other_ix)
+				{
+				  perm.push_back(perm[ki]);
+				  perm.erase(perm.begin()+ki);
+				  break;
+				}
 			    }
 			}
 		    }
 		}
-	    }
 
-	  // Downprioritize the non-corresponding face
-	  for (int ki=0; ki<(int)perm.size(); ++ki)
-	    {
-	      if (curr_face.get() == faces[perm[ki]].get())
+	      // Downprioritize the non-corresponding face
+	      for (int ki=0; ki<(int)perm.size(); ++ki)
 		{
-		  // if (edgs.size() == 1)
-		  //   {
+		  if (curr_face.get() == faces[perm[ki]].get())
+		    {
+		      // if (edgs.size() == 1)
+		      //   {
 		      perm.push_back(perm[ki]);
 		      perm.erase(perm.begin()+ki);
 		      if (edgs.size()+saved_edgs.size() == 5)
@@ -2764,12 +2822,50 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 			}
 		      break;
 
-		  //   }
-		  // else
-		  //   {
-		  //     perm.insert(perm.begin(), perm[ki]);
-		  //     perm.erase(perm.begin()+ki+1);
-		  //   }
+		      //   }
+		      // else
+		      //   {
+		      //     perm.insert(perm.begin(), perm[ki]);
+		      //     perm.erase(perm.begin()+ki+1);
+		      //   }
+		    }
+		}
+	    }
+	  else if (curr_face.get() && curr_nmb_corner == 5)
+	    {
+	      // No splitting is performed. Make sure that eventual
+	      // triangular surfaces are handled prior to the identified
+	      // special face
+#ifdef DEBUG_REG
+	      std::cout << "Triangular surfaces" << std::endl;
+#endif
+	      size_t kj;
+	      for (kj=0; kj<perm.size(); ++kj)
+		{
+		  if (curr_face.get() == faces[perm[kj]].get())
+		    break;
+		}
+#ifdef DEBUG_REG
+	      std::cout << "5-sided: " << kj << std::endl;
+#endif
+	      //for (size_t kr=kj+1; kr<perm.size(); ++kr)
+	      for (size_t kr=0; kr<perm.size(); ++kr)
+		{
+		  // Look for triangular faces
+		  int nmb_bd = faces[perm[kr]]->nmbOuterBdCrvs(tptol.gap, 
+							       tptol.neighbour, 
+							       tptol.bend);
+		  if (nmb_bd == 3)
+		    {
+#ifdef DEBUG_REG
+		      std::cout << "Interchanging " << kj << " and " << kr << std::endl; 
+#endif
+		      //perm.insert(perm.begin()+kr+1, perm[kj]);
+		      perm.push_back(perm[kj]);
+		      perm.erase(perm.begin()+kj);
+		      //kj = kr;
+		      break;
+		    }
 		}
 	    }
 	  
@@ -2797,7 +2893,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	  if (nmb_tri == 3)
 	    {
 	      // Let the triangular surface have first priority, 
-	      // adjacent faces in a corrspondance relation come next,
+	      // adjacent faces in a correspondance relation come next,
 	      // then the opposite surface to the triangular one.
 	      vector<ftSurface*> neighbours;
 	      faces[perm[first_tri]]->getAdjacentFaces(neighbours);
@@ -2941,6 +3037,21 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	      ix++;
 	    }
 	}
+      for (size_t ki=ix; ki<faces.size(); ++ki)
+	{
+	  vector<shared_ptr<Vertex> > Tvx = 
+	    getTwoFaceCorners(faces[perm[ki]], angtol);
+	  if (Tvx.size() > 0)
+	    {
+	      perm.insert(perm.begin()+ix, perm[ki]);
+	      perm.erase(perm.begin()+ki+1);
+	      for (size_t kj=0; kj<Tvx.size(); ++kj)
+		{
+		  vx_pri_.push_back(make_pair(Tvx[kj],perm[ix]));
+		}
+	      ix++;
+	    }
+	}
       ix = 0;
       for (size_t ki=0; ki<vx_pri_.size(); ++ki)
 	for (size_t kj=ki+1; kj<vx_pri_.size(); ++kj)
@@ -3048,6 +3159,7 @@ RegularizeFaceSet::removeExtraDiv(bool all)
       if (!sf1_bd.get())
 	continue;
 
+      shared_ptr<ParamSurface> under1 = sf1_bd->underlyingSurface();
       for (int kj=ki+1; kj<nmb_faces; ++kj)
 	{
 	  shared_ptr<ftSurface> f2 = model_->getFace(kj);
@@ -3057,8 +3169,36 @@ RegularizeFaceSet::removeExtraDiv(bool all)
 	  if (!sf2_bd.get())
 	    continue;
 
-	  if (sf1_bd->underlyingSurface().get() == sf2_bd->underlyingSurface().get())
+	  shared_ptr<ParamSurface> under2 = sf2_bd->underlyingSurface();
+	  bool same_elem = SurfaceModelUtils::sameElementarySurface(under1, 
+								    under2,
+								    tptol.gap, 
+								    tptol.kink);
+	  if (same_elem)
 	    {
+	      // Check type. Currently only prepared for elementary surfaces
+	      // without a seem
+	      shared_ptr<ElementarySurface> 
+		elem1 = dynamic_pointer_cast<ElementarySurface, ParamSurface>(under1);
+	      if (!elem1.get())
+		{
+		  shared_ptr<ParamSurface> parent1 = under1->getParentSurface();
+		  if (parent1.get())
+		    elem1 = dynamic_pointer_cast<ElementarySurface, ParamSurface>(parent1);
+		}
+	      if (!elem1.get() || elem1->instanceType() != Class_Plane)
+		same_elem = false;
+	    }
+
+	  if (under1.get() == under2.get() || same_elem)
+	    {
+#ifdef DEBUG_REG
+	      std::ofstream of1("same.g2");
+	      sf1->writeStandardHeader(of1);
+	      sf1->write(of1);
+	      sf2->writeStandardHeader(of1);
+	      sf2->write(of1);
+#endif
 	      // Potential for simplification
 	      int nmb_twin = f1->nmbAdjacencies(f2.get());
 	      vector<shared_ptr<Vertex> > corner1 = f1->getCornerVertices(tptol.bend);
@@ -3068,8 +3208,24 @@ RegularizeFaceSet::removeExtraDiv(bool all)
 		{
 		  // Merge
 		  vector<Point> seam_joints;
+		  bool swap = false;
+		  if (under1.get() != under2.get())
+		    {
+		      // Use the face with the largest underlying surface
+		      // as base
+		      BoundingBox box1 = under1->boundingBox();
+		      BoundingBox box2 = under2->boundingBox();
+		      if (box2.low().dist(box2.high()) > box1.low().dist(box1.high()))
+			swap = true;
+		    }
+
 		  shared_ptr<ftSurface> merged =
-		    model_->mergeSeamCrvFaces(f1.get(), f2.get(), seam_joints);
+		    model_->mergeSeamCrvFaces((swap) ? f2.get() : f1.get(), 
+					      (swap) ? f1.get() : f2.get(), 
+					      seam_joints);
+
+		  if (merged.get())
+		    kj--;
 		}
 	    }
 	}

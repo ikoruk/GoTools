@@ -21571,6 +21571,8 @@ void s1772_s9dir(double *dist,double diff[],double delta[],
   int    piv[3];		/* Pivotation array                       */
   int k,k3,j;			/* Counters.				  */
   
+  /* Initialize */
+  delta[0] = delta[1] = delta[2] = 0.0;
   
   /* Computing the different vector */
   
@@ -35096,7 +35098,7 @@ void sh1762_s9con (SISLObject * po1, SISLObject * po2, double aepsge,
 //===========================================================================
 {
   int kstat = 0;		/* Status variable.                        */
-  int ki,kj;			/* Counter.                                */
+  int ki,kj,kr;			/* Counter.                                */
   int knum = 0;			/* Number of intersection points on edges. */
   SISLIntpt **up = SISL_NULL;	/* Intersection points on edges.           */
   SISLdir *qd1, *qd2;		/* Direction cones of objects.             */
@@ -35245,6 +35247,16 @@ void sh1762_s9con (SISLObject * po1, SISLObject * po2, double aepsge,
 	       if (kstat < 0)
 		  goto error;
 	       kstat2 = MAX(kstat2,kstat);
+	       if (false /*kstat == 1*/)
+		 {
+		   /* VSK 1117. Locally this makes sense, but since the
+		      intersection surface is not brought forward to the
+		      application of the intersection function, it might
+		      be better to stop the computations and keep the
+		      boundary curves. */
+		   for (kr=0,kj=kpt; kr<kpt2; ++kr, ++kj)
+		     up[kj]->iinter = SI_TRIM;
+		 }
 	    }
 	    else if (kpt == 0 && kpt2 == knum)
 	    {
@@ -43620,15 +43632,25 @@ void s1310(SISLSurf *psurf1,SISLSurf *psurf2,SISLIntcurve *pinter,
       /*  Internal guide point exists, copy this to second position and
 	  copy end point to third position */
 
-      memcopy(sgd1+21,sgd1+21*(kstart-1),21,DOUBLE);
-      memcopy(sgpar1+2,sgpar1+2*(kstart-1),2,DOUBLE);
-      memcopy(sgd2+21,sgd2+21*(kstart-1),21,DOUBLE);
-      memcopy(sgpar2+2,sgpar2+2*(kstart-1),2,DOUBLE);
+      // memcopy(sgd1+21,sgd1+21*(kstart-1),21,DOUBLE);
+      // memcopy(sgpar1+2,sgpar1+2*(kstart-1),2,DOUBLE);
+      // memcopy(sgd2+21,sgd2+21*(kstart-1),21,DOUBLE);
+      // memcopy(sgpar2+2,sgpar2+2*(kstart-1),2,DOUBLE);
 
-      memcopy(sgd1+2*21,sgd1+21*(kpoint-1),21,DOUBLE);
-      memcopy(sgpar1+4,sgpar1+2*(kpoint-1),2,DOUBLE);
-      memcopy(sgd2+2*21,sgd2+21*(kpoint-1),21,DOUBLE);
-      memcopy(sgpar2+4,sgpar2+2*(kpoint-1),2,DOUBLE);
+      // memcopy(sgd1+2*21,sgd1+21*(kpoint-1),21,DOUBLE);
+      // memcopy(sgpar1+4,sgpar1+2*(kpoint-1),2,DOUBLE);
+      // memcopy(sgd2+2*21,sgd2+21*(kpoint-1),21,DOUBLE);
+      // memcopy(sgpar2+4,sgpar2+2*(kpoint-1),2,DOUBLE);
+
+      memmove(sgd1+21,sgd1+21*(kstart-1),21*sizeof(double));
+      memmove(sgpar1+2,sgpar1+2*(kstart-1),2*sizeof(double));
+      memmove(sgd2+21,sgd2+21*(kstart-1),21*sizeof(double));
+      memmove(sgpar2+2,sgpar2+2*(kstart-1),2*sizeof(double));
+
+      memmove(sgd1+2*21,sgd1+21*(kpoint-1),21*sizeof(double));
+      memmove(sgpar1+4,sgpar1+2*(kpoint-1),2*sizeof(double));
+      memmove(sgd2+2*21,sgd2+21*(kpoint-1),21*sizeof(double));
+      memmove(sgpar2+4,sgpar2+2*(kpoint-1),2*sizeof(double));
 
       kpoint = 3;
       kstart = 2;

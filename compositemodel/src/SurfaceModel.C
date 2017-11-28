@@ -652,23 +652,26 @@ namespace Go
 		shared_ptr<ftSurface> other_face = 
 		  fetchAsSharedPtr(twin_cand[idx]);
 
-		// Check if the twin face is a part of this model
-		double u1, v1;
-		Point pos1 = face->surface()->getInternalPoint(u1, v1);
-		double u2, v2, dist;
-		Point pos2;
-		other_face->closestPoint(pos1, u2, v2, pos2, dist, toptol_.gap);
-		Point norm = other_face->normal(u2, v2);
-		norm.normalize();
+		if (other_face.get())
+		  {
+		    // Check if the twin face is a part of this model
+		    double u1, v1;
+		    Point pos1 = face->surface()->getInternalPoint(u1, v1);
+		    double u2, v2, dist;
+		    Point pos2;
+		    other_face->closestPoint(pos1, u2, v2, pos2, dist, toptol_.gap);
+		    Point norm = other_face->normal(u2, v2);
+		    norm.normalize();
 
-		// Check if the model intersects a beam from close to the
-		// double face and inwards. If not, remove the face
-		norm *= -1;
-		Point pos = pos2 + 2*toptol_.neighbour*norm;
-		ftPoint result(0,0,0);
-		bool found = hit(pos, norm, result);
-		if (!found)
-		  removeFace(other_face);
+		    // Check if the model intersects a beam from close to the
+		    // double face and inwards. If not, remove the face
+		    norm *= -1;
+		    Point pos = pos2 + 2*toptol_.neighbour*norm;
+		    ftPoint result(0,0,0);
+		    bool found = hit(pos, norm, result);
+		    if (!found)
+		      removeFace(other_face);
+		  }
 		
 	      }
 	    else
@@ -4178,8 +4181,107 @@ SurfaceModel::mergeSeamCrvFaces(ftSurface* face1, ftSurface* face2,
     return dummy;
 
   shared_ptr<ParamSurface> base = bd_sf1->underlyingSurface();
-  if (base.get() != bd_sf2->underlyingSurface().get())
-    return dummy;  // Different underlying surfaces
+  shared_ptr<ParamSurface> base2 = bd_sf2->underlyingSurface();
+  shared_ptr<BoundedSurface> bd_sf1_copy;
+  shared_ptr<BoundedSurface> bd_sf2_copy;
+  // Make copies to rewind in case of now success
+  bd_sf1_copy = shared_ptr<BoundedSurface>(bd_sf1->clone());
+  bd_sf2_copy = shared_ptr<BoundedSurface>(bd_sf2->clone());
+
+  if (base.get() != base2.get())
+    {
+      // Check for identical underlying elementary surfaces.
+      bool same = 
+	SurfaceModelUtils::sameElementarySurface(base, base2,
+						 toptol_.gap, toptol_.kink);
+      if (same)
+	{
+	  // Make sure that the underlying surface is large enough
+	  BoundingBox box2 = bd_sf2->boundingBox();
+	  double len = box2.low().dist(box2.high());
+
+	  // Surface extension still missing
+
+	  // Release all parameter curves belonging to surface 2
+	  int ix1, ix2;
+	  vector<CurveLoop> bd_loops = bd_sf2->allBoundaryLoops();
+	  for (ix1=0; ix1<(int)bd_loops.size(); ++ix1)
+	    {
+	      int nmb_cvs = bd_loops[ix1].size();
+	      for (ix2=0; ix2<nmb_cvs; ++ix2)
+		{
+		  shared_ptr<CurveOnSurface> sf_cv =
+		    dynamic_pointer_cast<CurveOnSurface, ParamCurve>(bd_loops[ix1][ix2]);
+		  if (sf_cv)
+		    sf_cv->unsetParameterCurve();
+		}
+	    }
+
+	  // Replace underlying surface
+	  bd_sf2->replaceSurf(base);
+
+	  // Make new parameter curves
+	  for (ix1=0; ix1<(int)bd_loops.size(); ++ix1)
+	    {
+	      int nmb_cvs = bd_loops[ix1].size();
+	      for (ix2=0; ix2<nmb_cvs; ++ix2)
+		{
+		  shared_ptr<CurveOnSurface> sf_cv =
+		    dynamic_pointer_cast<CurveOnSurface, ParamCurve>(bd_loops[ix1][ix2]);		 
+		  if (sf_cv)
+		    {
+		      bool OK = 
+			sf_cv->ensureParCrvExistence(toptol_.gap);
+		      if (!OK)
+			break;
+		    }
+		}
+	      if (ix2 < nmb_cvs)
+		break;
+	    }
+	  if (ix1 < (int)bd_loops.size())
+	    {
+	      // Operation failed. Reset
+	      bd_sf2 = bd_sf2_copy;
+	      return dummy;
+	    }
+#ifdef DEBUG_REG
+	  std::ofstream of1("geom_cvs.g2");
+	  std::ofstream of2 ("par_cvs.g2");
+	  vector<CurveLoop> bdl1 = bd_sf1->allBoundaryLoops();
+	  for (ix1=0; ix1<(int)bdl1.size(); ++ix1)
+	    {
+	      int nmb_cvs = bdl1[ix1].size();
+	      for (ix2=0; ix2<nmb_cvs; ++ix2)
+		{
+		  shared_ptr<CurveOnSurface> sf_cv =
+		    dynamic_pointer_cast<CurveOnSurface, ParamCurve>(bdl1[ix1][ix2]);
+		  sf_cv->spaceCurve()->writeStandardHeader(of1);
+		  sf_cv->spaceCurve()->write(of1);
+		  sf_cv->parameterCurve()->writeStandardHeader(of2);
+		  sf_cv->parameterCurve()->write(of2);
+		}
+	    }
+	  
+	  vector<CurveLoop> bdl2 = bd_sf2->allBoundaryLoops();
+	  for (ix1=0; ix1<(int)bdl2.size(); ++ix1)
+	    {
+	      int nmb_cvs = bdl2[ix1].size();
+	      for (ix2=0; ix2<nmb_cvs; ++ix2)
+		{
+		  shared_ptr<CurveOnSurface> sf_cv =
+		    dynamic_pointer_cast<CurveOnSurface, ParamCurve>(bdl2[ix1][ix2]);
+		  sf_cv->spaceCurve()->writeStandardHeader(of1);
+		  sf_cv->spaceCurve()->write(of1);
+		  sf_cv->parameterCurve()->writeStandardHeader(of2);
+		  sf_cv->parameterCurve()->write(of2);
+		}
+	    }
+#endif
+	}
+      else
+	return dummy;  // Different underlying surfaces
+    }
 
   // Make boundary curves of merged surface.
   // Fetch boundary loops
@@ -4190,6 +4292,12 @@ SurfaceModel::mergeSeamCrvFaces(ftSurface* face1, ftSurface* face2,
 
   shared_ptr<ftSurface> merged_face = 
     performMergeFace(base, loops1, loops2, face1->getBody(), seam_joints, 0);
+  if (!merged_face.get())
+    {
+      bd_sf1 = bd_sf1_copy;
+      bd_sf2 = bd_sf2_copy;
+      return merged_face;
+    }
 
   shared_ptr<ftSurface> shrface1 = fetchAsSharedPtr(face1);
   shared_ptr<ftSurface> shrface2 = fetchAsSharedPtr(face2);
@@ -4228,6 +4336,10 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
 			       int reverse, int cont)
 //===========================================================================
 {
+  shared_ptr<ftSurface> merged_face;
+  Point par_eps = SurfaceTools::getParEpsilon(*base, toptol_.gap);
+  double ptol = 0.5*(par_eps[0]+par_eps[1]);
+
   // Remove coincident curves
 #ifdef DEBUG_REG
   // DEBUG. Draw
@@ -4256,6 +4368,9 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
       // Make sure that the back pointer to the base surface is correct
       tmp->setUnderlyingSurface(base);
 
+      // Check parameter curve
+      bool samecrv = tmp->sameCurve(toptol_.gap);
+
       bd_cvs.push_back(tmp);
     }
 
@@ -4276,6 +4391,9 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
       // Make sure that the back pointer to the base surface is correct
       tmp->setUnderlyingSurface(base);
 
+      // Check parameter curve
+      bool samecrv = tmp->sameCurve(toptol_.gap);
+
       bd_cvs.push_back(tmp);
     }
 
@@ -4285,25 +4403,46 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
   eps = std::max(eps, loops2[0].getSpaceEpsilon());
 
   // Combine loops, first remove duplicates
+  bool found2 = false;
   bool found = false;
   for (ki=0; ki<nmb1;)
     {
+      if (!bd_cvs[ki]->hasParameterCurve())
+	break;
       Point pos1 = bd_cvs[ki]->ParamCurve::point(bd_cvs[ki]->startparam());
       Point pos2 = bd_cvs[ki]->ParamCurve::point(bd_cvs[ki]->endparam());
       for (kj=nmb1; kj<nmb1+nmb2;)
 	{
 	  found = false;
+	  if (!bd_cvs[kj]->hasParameterCurve())
+	    break;
 	  Point pos3 = bd_cvs[kj]->ParamCurve::point(bd_cvs[kj]->startparam());
 	  Point pos4 = bd_cvs[kj]->ParamCurve::point(bd_cvs[kj]->endparam());
 	  if ((pos1.dist(pos4) < toptol_.gap && pos2.dist(pos3) < toptol_.gap) ||
 	      (pos1.dist(pos3) < toptol_.gap && pos2.dist(pos4) < toptol_.gap))
 	    {
+	      // Check also distances in the parameter domain
+	      Point parpt1 = 
+		bd_cvs[ki]->parameterCurve()->point(bd_cvs[ki]->startparam());
+	      Point parpt2 = 
+		bd_cvs[ki]->parameterCurve()->point(bd_cvs[ki]->endparam());
+	      Point parpt3 = 
+		bd_cvs[kj]->parameterCurve()->point(bd_cvs[kj]->startparam());
+	      Point parpt4 = 
+		bd_cvs[kj]->parameterCurve()->point(bd_cvs[kj]->endparam());
+	      if (!((parpt1.dist(parpt4) < ptol && parpt2.dist(parpt3) < ptol) ||
+		    (parpt1.dist(parpt3) < ptol && parpt2.dist(parpt4))))
+		{
+		  ++kj;
+		  continue;
+		}
+	      
 	      // Maybe some more checking?
 	      bd_cvs.erase(bd_cvs.begin()+kj);
 	      nmb2--;
 	      bd_cvs.erase(bd_cvs.begin()+ki);
 	      nmb1--;
-	      found = true;
+	      found2 = found = true;
 	      break;
 	    }
 	  kj++;
@@ -4311,6 +4450,9 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
       if (!found)
 	ki++;
     }
+
+  if (!found2)
+    return merged_face;
 
   // Sort curves
   vector<vector<shared_ptr<CurveOnSurface> > > bd_cvs_vec;
@@ -4426,7 +4568,8 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
     joints[ki] = bd_cvs_vec[0][ki]->ParamCurve::point(bd_cvs_vec[0][ki]->startparam());
 
   // Make new bounded surface
-  shared_ptr<BoundedSurface> merged = 
+  shared_ptr<BoundedSurface> merged;
+  merged = 
     shared_ptr<BoundedSurface>(new BoundedSurface(base, bd_cvs_vec, toptol_.gap));
   double merge_dist;
   bool success = false;
@@ -4448,8 +4591,7 @@ SurfaceModel::performMergeFace(shared_ptr<ParamSurface> base,
 #endif
 
   // Make face
-  shared_ptr<ftSurface> merged_face = 
-    shared_ptr<ftSurface>(new ftSurface(merged, -1));
+  merged_face = shared_ptr<ftSurface>(new ftSurface(merged, -1));
   merged_face->setBody(bd);
   (void)merged_face->createInitialEdges(toptol_.gap, toptol_.kink);
 

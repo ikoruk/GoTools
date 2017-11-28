@@ -286,7 +286,8 @@ void faceWithHoles(std::vector<std::vector<ftEdge*> >& half_holes);
     getSignificantVertex(std::vector<shared_ptr<Vertex> > cand_vx);
 
  std::vector<shared_ptr<Vertex> >
-   prioritizeCornerVx(std::vector<shared_ptr<Vertex> > cand_vx);
+   prioritizeCornerVx(std::vector<shared_ptr<Vertex> > cand_vx, 
+		      bool reduced = false);
 
  std::vector<shared_ptr<Vertex> > getTjointVertices(ftSurface* face=NULL);
 

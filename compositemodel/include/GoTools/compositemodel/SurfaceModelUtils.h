@@ -72,6 +72,12 @@ namespace Go
 			    std::vector<std::vector<shared_ptr<ftSurface> > >& faces,
 			    std::vector<shared_ptr<ParamSurface> >& under_sfs);
 
+    /// Check if two non-trimmed surfaces really represents the same 
+    /// elementary surface
+    bool sameElementarySurface(shared_ptr<ParamSurface>& under1,
+			       shared_ptr<ParamSurface>& under2,
+			       double tol, double angtol);
+
     /// Extend an underlying surface to be able to serve as a support for all
     /// surfaces in sf_set.
     /// NB! Only supporting elementary surfaces
@@ -114,7 +120,7 @@ namespace Go
 			     std::vector<shared_ptr<ParamSurface> >& sfs2,
 			     std::vector<bool>& at_bd2,
 			     Body *model2, double eps, double angtol,
-			     std::vector<std::vector<shared_ptr<ParamSurface> > >& groups);
+			     std::vector<std::vector<std::pair<shared_ptr<ParamSurface>, int> > >& groups);
 
     /// Intersect surface with a line
     void

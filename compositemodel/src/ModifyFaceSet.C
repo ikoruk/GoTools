@@ -41,10 +41,11 @@
 #include "GoTools/compositemodel/ModifyFaceSet.h"
 #include "GoTools/compositemodel/RegularizeUtils.h"
 #include "GoTools/compositemodel/ftEdge.h"
+#include "GoTools/geometry/ElementarySurface.h"
 #include <fstream>
 #include <cstdlib>
 
-#define DEBUG
+//#define DEBUG
 
 using std::vector;
 using std::set;
@@ -67,6 +68,157 @@ ModifyFaceSet::~ModifyFaceSet()
 }
 
 //==========================================================================
+shared_ptr<ParamSurface> ModifyFaceSet::getSplittingSurface()
+//==========================================================================
+{
+  shared_ptr<ParamSurface> split_sf;
+
+  tpTolerances tptol = model_->getTolerances();
+
+  // Fetch all sharp edges
+  vector<ftEdge*> sharp_edges = fetchSharpEdges();
+#ifdef DEBUG
+  std::cout << "Nmb concave edges: " << sharp_edges.size() << std::endl;
+  for (size_t ka=0; ka<sharp_edges.size(); ++ka)
+    std::cout << sharp_edges[ka] << " ";
+  std::cout << std::endl;
+#endif
+
+  if (sharp_edges.size() == 0)
+    return split_sf;
+  int select = 0;
+  if (sharp_edges.size() > 1)
+    {
+      // Check if the edges belongs to the same two faces
+      ftFaceBase *f1 = sharp_edges[0]->face();
+      ftFaceBase *f2 = (sharp_edges[0]->twin()) ? 
+	sharp_edges[0]->twin()->face() : NULL;
+      if (f1 == NULL || f2 == NULL)
+	return split_sf;  
+      for (size_t ki=1; ki<sharp_edges.size(); ++ki)
+	{
+	  ftFaceBase *f3 = sharp_edges[ki]->face();
+	  ftFaceBase *f4 = (sharp_edges[ki]->twin()) ? 
+	    sharp_edges[ki]->twin()->face() : NULL;
+	  if (!((f1 == f3 || f1 == f4) || (f2 == f3 || f2 == f4)))
+	    return split_sf;  
+	  if (!(f1 == f3 || f1 == f4))
+	    select = 2;
+	  else
+	    select = 1;
+ 	}
+    }
+#ifdef DEBUG
+  std::cout << "Select: " << select << std::endl;
+#endif
+
+  // Check if the edges make up a chain and extract edge vertices
+  size_t ix1=0, ix2=0;
+  shared_ptr<Vertex> v1, v2;
+  sharp_edges[0]->getVertices(v1, v2);
+  for (size_t ki=1; ki<sharp_edges.size(); ++ki)
+    {
+      size_t kj;
+      for (kj=0; kj<ki; ++kj)
+	{
+	  shared_ptr<Vertex> common_vx = 
+	    sharp_edges[kj]->getCommonVertex(sharp_edges[ki]);
+	  if (!common_vx.get())
+	    continue;
+
+	  if (common_vx.get() == v1.get())
+	    {
+	      v1 = sharp_edges[ki]->getOtherVertex(common_vx.get());
+	      ix1 = ki;
+	    }
+	  else if (common_vx.get() == v2.get())
+	    {
+	      v2 = sharp_edges[ki]->getOtherVertex(common_vx.get());
+	      ix2 = ki;
+	    }
+	}
+    }
+#ifdef DEBUG
+  std::cout << "ix1 = " << ix1 << ", ix2 = " << ix2 << std::endl;
+#endif
+  if (sharp_edges.size() > 1 && ix1 == ix2)
+    return split_sf;  // Discontinuous edges
+
+  // Check if the edge corresponds to Tjoint vertices in the next
+  // faces
+  double ang1, ang2;
+  ftEdge *edge1, *edge2;
+  ftSurface *face1 = fetchNextFace(sharp_edges[ix1], v1.get(),
+				   tptol.bend, edge1, ang1);
+  ftSurface *face2 = fetchNextFace(sharp_edges[ix2], v2.get(),
+				   tptol.bend, edge2, ang2);
+
+#ifdef DEBUG
+  std::cout << "edge1: " << edge1 << ", edge2: " << edge2 << std::endl;
+#endif
+  if (edge1 != NULL || edge2 != NULL)
+    return split_sf;  // An edge continuation to the concave edge is found
+  
+  // Identify any elementary surfaces meeting in the concave edge
+  shared_ptr<ElementarySurface> elem1, elem2;
+  shared_ptr<ParamSurface> parent1, parent2;
+  ftSurface *adj1 = sharp_edges[0]->face()->asFtSurface();
+  ftSurface *adj2 = sharp_edges[0]->twin()->face()->asFtSurface();
+  if (adj1)
+    {
+      parent1 = adj1->surface()->getParentSurface();
+      if (parent1.get())
+	elem1 = dynamic_pointer_cast<ElementarySurface,ParamSurface>(parent1);
+    }
+  if (adj2)
+    {
+      parent2 = adj2->surface()->getParentSurface();
+      if (parent2.get())
+	elem2 = dynamic_pointer_cast<ElementarySurface,ParamSurface>(parent2);
+    }
+
+  shared_ptr<ElementarySurface> elem;
+  if (elem1.get() && elem2.get())
+    {
+      // Select surface
+      // Preference: plane, cylinder, cone (could do some more checking)
+      if (elem1->instanceType() == Class_Plane && select != 2)
+	elem = elem1;
+      else if (elem2->instanceType() == Class_Plane && select != 1)
+	elem = elem2;
+      else if (elem1->instanceType() == Class_Cylinder && select != 2)
+	elem = elem1;
+      else if (elem2->instanceType() == Class_Cylinder && select != 1)
+	elem = elem2;
+      else if (elem1->instanceType() == Class_Cone && select != 2)
+	elem = elem1;
+      else if (elem2->instanceType() == Class_Cone && select != 1)
+	elem = elem2;
+      else if (select != 2)
+	elem = elem1;
+      else
+	elem = elem2;
+     }
+  else if (elem1.get())
+    elem = elem1;
+  else if (elem2.get())
+    elem = elem2;
+
+  if (elem)
+    {
+      // Extend surface to ensure intersection. Compute bounding box
+      BoundingBox box = model_->boundingBox();
+      double len = box.high().dist(box.low());
+      elem->enlarge(len, len, len, len);
+      shared_ptr<SplineSurface> tmp_sf(elem->createSplineSurface());
+      tmp_sf->setElementarySurface(elem);
+      split_sf = tmp_sf;
+    }
+
+  return split_sf;
+}
+
+  //==========================================================================
 shared_ptr<SurfaceModel> ModifyFaceSet::getModifiedModel(int& nmb)
 //==========================================================================
 {

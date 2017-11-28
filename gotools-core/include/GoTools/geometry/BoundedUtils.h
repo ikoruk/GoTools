@@ -145,7 +145,7 @@ namespace BoundedUtils {
 		      shared_ptr<ParamCurve>& pcurve, double epsge,
 		      shared_ptr<BoundedSurface>& bounded_sf);
 
-      /// We intersect a parametric surface with a plane, and return the surface(s)
+    /// We intersect a parametric surface with a plane, and return the surface(s)
     /// consisting only of the part(s) of the surface that were located on the 
     /// positive side of the intersection.  If there was no intersection, an empty
     /// stl-vector is returned.  The plane is defined by its normal and a point 

@@ -118,7 +118,8 @@ namespace Go {
 
     bool
       mergeSituationContinuation(ftSurface* init_face, shared_ptr<Vertex> vx,
-				 ftEdge* edge, double angtol);
+				 ftEdge* edge, double angtol, 
+				 bool check_constant_curve = false);
 
     double getMaxParFrac(shared_ptr<ftSurface> face);
 
@@ -154,6 +155,10 @@ namespace Go {
       checkTrimSeg3(std::vector<shared_ptr<CurveOnSurface> >& trim_segments,
 		    const Point& vx_par1, const Point& vx_par2, 
 		    double epsge);
+
+    bool checkCandVx(shared_ptr<ftSurface> face, 
+		     shared_ptr<Vertex> vx1, shared_ptr<Vertex> vx2,
+		     double bend);
 
     void 
       checkTrimConfig(shared_ptr<ftSurface> face,
@@ -215,6 +220,11 @@ namespace Go {
 
     void getSourceCvs(std::vector<shared_ptr<ftEdge> >& all_edg,
 		      std::vector<shared_ptr<ParamCurve> >& all_cvs);
+
+    bool updateVertexPos(shared_ptr<ftSurface> face,
+			 shared_ptr<Vertex> vx,
+			 shared_ptr<Vertex>& cand_vx,
+			 double epsge, double tol2, double angtol);
   }
 
 }  // namespace Go

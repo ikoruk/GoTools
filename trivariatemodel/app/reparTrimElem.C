@@ -280,10 +280,16 @@ int main( int argc, char* argv[] )
 		  // if (false)
 		  //   {
 		  // Create non-trimmed parameter element
+		  int bd_cond[6][2];
 		  shared_ptr<ParamVolume> reg_vol = 
-		    sub_elem[kj]->getRegParVol(degree, true);
+		    sub_elem[kj]->getRegParVol(degree, bd_cond, true);
 		  if (reg_vol.get())
 		    {
+		      std::cout << "Boundary conditions: ";
+		      for (int ka=0; ka<6; ++ka)
+			std::cout << bd_cond[ka][0] << " " << bd_cond[ka][1] << " ";
+		      std::cout << std::endl;
+
 		      reg_vol->writeStandardHeader(of5);
 		      reg_vol->write(of5);
 		      nmb_par++;
@@ -313,8 +319,17 @@ int main( int argc, char* argv[] )
 		  vector<shared_ptr<ftVolume> > split_elem; 
 		  bool do_split = true;
 		  if (do_split)
-		    split_elem = sub_elem[kj]->splitConcaveVol(degree, true);
-		  else
+		    {
+		      split_elem = sub_elem[kj]->splitConcaveVol(degree, true);
+		      std::cout << "split concave: " << split_elem.size() << std::endl;
+		      std::ofstream pre_block1("pre_block1.g22");
+		      VolumeModelFileHandler filewrite1;
+		      filewrite1.writeStart(pre_block1);
+		      filewrite1.writeHeader("Irregular volume after pre split", pre_block1);
+		      filewrite1.writeVolumes(sub_elem, pre_block1);
+		      filewrite1.writeEnd(pre_block1);
+		    }
+		  if (split_elem.size() == 0)
 		    split_elem.push_back(sub_elem[kj]);
 
 		  vector<shared_ptr<ftVolume> > blocks;
@@ -322,6 +337,13 @@ int main( int argc, char* argv[] )
 
 		  for (size_t kr=0; kr<split_elem.size(); ++kr)
 		    {
+		      std::ofstream pre_block2("pre_block2.g22");
+		      VolumeModelFileHandler file2;
+		      file2.writeStart(pre_block2);
+		      file2.writeHeader("Pre block structureing", pre_block2);
+		      file2.writeVolume(split_elem[kr], pre_block2);
+		      file2.writeEnd(pre_block2);
+		  
 		      // Block structuring
 		      vector<SurfaceModel*> modified_adjacent;
 		      bool pattern_split = false;
@@ -346,6 +368,13 @@ int main( int argc, char* argv[] )
 		  if (blocks.size() == 0)
 		    failed = true;
 
+		  std::ofstream post_block("post_block.g22");
+		  VolumeModelFileHandler filewrite2;
+		  filewrite2.writeStart(post_block);
+		  filewrite2.writeHeader("Block structured volume", post_block);
+		  filewrite2.writeVolumes(blocks, post_block);
+		  filewrite2.writeEnd(post_block);
+
 		  nmb_blocks += (int)blocks.size();
 		  for (size_t kr=0; kr<blocks.size(); ++kr)
 		    {
@@ -355,10 +384,16 @@ int main( int argc, char* argv[] )
 			  // if (false)
 			  //   {
 			  // Create non-trimmed parameter element
+			  int bd_cond[6][2];
 			  shared_ptr<ParamVolume> reg_vol = 
-			    blocks[kr]->getRegParVol(degree, true);
+			    blocks[kr]->getRegParVol(degree, bd_cond, true);
 			  if (reg_vol.get())
 			    {
+			      std::cout << "Boundary conditions: ";
+			      for (int ka=0; ka<6; ++ka)
+				std::cout << bd_cond[ka][0] << " " << bd_cond[ka][1] << " ";
+			      std::cout << std::endl;
+
 			      reg_vol->writeStandardHeader(of5);
 			      reg_vol->write(of5);
 			      nmb_par++;

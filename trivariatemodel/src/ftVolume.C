@@ -37,8 +37,8 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-#define DEBUG_VOL1
-#define DEBUG
+//#define DEBUG_VOL1
+//#define DEBUG
 
 #include "GoTools/trivariatemodel/ftVolume.h"
 #include "GoTools/trivariatemodel/ftVolumeTools.h"
@@ -2224,12 +2224,17 @@ bool ftVolume::regularizeBdShells(vector<pair<Point,Point> >& corr_vx_pts,
 	mod << vxs[kr]->getVertexPoint() << std::endl;
 #endif
 
+      RegularizeFaceSet regularize(sfmodel, pattern_split, level);
+      
+      // Simplify if possible
+      if (level == 0)
+	regularize.removeExtraDiv(true);
+
       // Fetch info about opposite surfaces
       vector<pair<int, int> > opposite = oppositeSfs(sfmodel);
 
       // Regularize shell
       int nmb_faces = sfmodel->nmbEntities();
-      RegularizeFaceSet regularize(sfmodel, pattern_split, level);
       regularize.setSplitMode(split_mode);
       size_t kj;
       for (kj=0; kj<opposite.size(); ++kj)
@@ -2454,10 +2459,16 @@ bool ftVolume::untrimRegular(int degree, bool accept_degen)
 //===========================================================================
 // 
 // 
-shared_ptr<ParamVolume> ftVolume::getRegParVol(int degree, bool accept_degen) 
+shared_ptr<ParamVolume> ftVolume::getRegParVol(int degree, int bd_cond[6][2],
+					       bool accept_degen) 
 //===========================================================================
 {
   shared_ptr<ParamVolume> result;
+
+  // Initiate to no boundary conditions
+  int ki;
+  for (ki=0; ki<6; ++ki)
+    bd_cond[ki][0] = bd_cond[ki][1] = -1;
 
   // Check configuration
   if (shells_.size() != 1)
@@ -2481,7 +2492,6 @@ shared_ptr<ParamVolume> ftVolume::getRegParVol(int degree, bool accept_degen)
   if (!sorted)
     return result;  // Sorting failed
 
-  int ki;
 #ifdef DEBUG_VOL1
   std::ofstream of0("sorted_sfs.g2");
 
@@ -2614,6 +2624,18 @@ shared_ptr<ParamVolume> ftVolume::getRegParVol(int degree, bool accept_degen)
   // side surfaces
   setParameterVolAdjacency(sorted_sfs, face2);
 
+  // Set boundary information
+  for (ki=0; ki<6; ++ki)
+    {
+      if (face2[ki].get() && face2[ki]->hasBoundaryConditions())
+	{
+	  int bd_type, bd;
+	  face2[ki]->getBoundaryConditions(bd_type, bd);
+	  bd_cond[ki][0] = bd_type;
+	  bd_cond[ki][1] = bd;
+	}
+    }
+
   // Make sure that there are no missing faces
   for (ki=(int)face2.size()-1; ki>=0; --ki)
     if (!face2[ki].get())
@@ -2664,6 +2686,14 @@ ftVolume::setParameterVolAdjacency(vector<shared_ptr<ParamSurface> >& sfs1,
 	{
 	  int sf_ix = shell->getIndex(sfs1[ki].get());
 	  face1[ki] = shell->getFace(sf_ix);
+
+	  // Transfer boundary condition information
+	  if (face1[ki]->hasBoundaryConditions())
+	    {
+	      int bd_type, bd;
+	      face1[ki]->getBoundaryConditions(bd_type, bd);
+	      face2[ki]->setBoundaryConditions(bd_type, bd);
+	    }
 	}
     }
 
@@ -3131,7 +3161,7 @@ ftVolume::replaceWithRegVolumes(int degree,
 				int split_mode,
 				bool pattern_split,
 				bool accept_degen,
-				int level) 
+				int level)
 //===========================================================================
 {
   vector<shared_ptr<ftVolume> > reg_vols;
@@ -3139,7 +3169,7 @@ ftVolume::replaceWithRegVolumes(int degree,
   // Make sure that all anticipated edges are in place
   vector<pair<Point,Point> > corr_vx_pts;
   (void)regularizeBdShells(corr_vx_pts, modified_adjacent,
-			   split_mode, pattern_split, level);  
+			   split_mode, pattern_split, level);
 
 #ifdef DEBUG_VOL1
   std::ofstream of("regvol1.g2");
@@ -3199,6 +3229,8 @@ ftVolume::replaceWithRegVolumes(int degree,
   // Check if the regularization is completed
   if (reg_vols.size() > 1)
     {
+      if (!trimmed)
+	++level;   // New try to block structure the current volume
       size_t nmb = reg_vols.size();
       for (size_t kj=0; kj<nmb; ++kj)
 	{
@@ -3217,8 +3249,6 @@ ftVolume::replaceWithRegVolumes(int degree,
 		}
 #endif
 
-	      if (!trimmed)
-		++level;   // New try to block structure the current volume
 	      vector<shared_ptr<ftVolume> > reg_vols2 = 
 		reg_vols[kj]->replaceWithRegVolumes(degree, modified_adjacent,
 						    true, split_mode,
@@ -3268,9 +3298,27 @@ ftVolume::splitConcaveVol(int degree, bool isolate)
   shared_ptr<SurfaceModel> sfmodel = getShell(0);
   ModifyFaceSet splitmod(sfmodel);
 
+  // Check if a suitable splitting surface exists
+  shared_ptr<ParamSurface> split_sf = splitmod.getSplittingSurface();
+#ifdef DEBUG_VOL1
+  std::cout << "Split surface: " << split_sf.get() << std::endl;
+#endif
+  if (split_sf.get())
+    {
+      int create_models = (isolate) ? 4 : 3;  // Create both sides, 
+      // connect models if requested
+      reg_vols = ftVolumeTools::splitVolumes(this, split_sf, toptol_.gap, 
+					     create_models);
+      if (reg_vols.size() > 1)
+	{
+	  return reg_vols;
+	}
+    }
+
   int nmb_div = 0;
   shared_ptr<SurfaceModel> sfmodel2 = splitmod.getModifiedModel(nmb_div);
 #ifdef DEBUG_VOL1
+  std::cout << "Nmb div: " << nmb_div << std::endl;
   std::ofstream of1("vol1.g2");
   vector<shared_ptr<SurfaceModel> > shells2 = getAllShells();
   for (size_t ki=0; ki<shells2.size(); ++ki)
@@ -3284,6 +3332,9 @@ ftVolume::splitConcaveVol(int degree, bool isolate)
 	}
     }
 #endif
+
+  if (nmb_div < 4)
+    return reg_vols;  // No split
 
   bool trimmed;
   vector<pair<Point,Point> > corr_vx_pts;
@@ -3650,6 +3701,20 @@ ftVolume::sortRegularSurfaces(vector<shared_ptr<ParamSurface> >& sorted_sfs,
 	      dist2[kj] = dd;
 	      if (dd < toptol_.gap)
 		nmb_touch2++;
+	    }
+	  
+	  // Fallback in case of gaps
+	  if (nmb_touch1 == 0)
+	    {
+	      for (kj=0; kj<(int)dist1.size(); ++kj)
+		if (dist1[kj] < toptol_.neighbour)
+		  ++nmb_touch1;
+	    }
+	  if (nmb_touch2 == 0)
+	    {
+	      for (kj=0; kj<(int)dist2.size(); ++kj)
+		if (dist2[kj] < toptol_.neighbour)
+		  ++nmb_touch2;
 	    }
 	  if (nmb_touch1+nmb_touch2 != 2)
 	    {
@@ -4644,8 +4709,8 @@ ftVolume::createByCoons(vector<shared_ptr<ParamSurface> >& sfs,
 	  if (spl_sf.get() && spl_sf->rational() == false && 
 	      spl_sf->order_u()<=degree+1 && spl_sf->order_v()<=degree+1)
 	    {
-	      std::cout << "Spline surface " << bd_sf.get() << std::endl;
 #ifdef DEBUG_VOL1
+	      std::cout << "Spline surface " << spl_sf.get() << std::endl;
 	      spl_sf->writeStandardHeader(ofsf);
 	      spl_sf->write(ofsf);
 #endif
@@ -4815,7 +4880,9 @@ ftVolume::createByCoons(vector<shared_ptr<ParamSurface> >& sfs,
 				}
 			      else
 				{
+#ifdef DEBUG
 				  std::cout << "No curve?" << std::endl;
+#endif
 				  bd_sf.reset();
 				  break;
 				}
@@ -6478,7 +6545,9 @@ void ftVolume::makeSurfacePair(vector<ftEdge*>& loop,
     }
 #endif
 
-  double ang_fac = 2.0;
+  double ang_fac = 3.0; // 2.0; Maybe some other way of deciding is required
+  // We have entered this function since there is an expectation of defining
+  // a split surface, but is it a possibility of merging wrong curves?
   if (space_cvs2.size() != 4)
     {
       while (space_cvs2.size() > 4)
@@ -8213,8 +8282,18 @@ bool ftVolume::sameFace(vector<ftEdge*>& loop)
 
 		  // Fetch the end vertices of the current path
 		  shared_ptr<Vertex> vx_tmp = loop2[0]->getCommonVertex(loop2[1]);
+		  if (!vx_tmp.get())
+		    {
+		      kj = loop.size();
+		      break;
+		    }
 		  shared_ptr<Vertex> vx1 = loop2[0]->getOtherVertex(vx_tmp.get());
 		  vx_tmp = loop2[loop2.size()-1]->getCommonVertex(loop2[loop2.size()-2]);
+		  if (!vx_tmp.get())
+		    {
+		      kj = loop.size();
+		      break;
+		    }
 		  shared_ptr<Vertex> vx2 = 
 		    loop2[loop2.size()-1]->getOtherVertex(vx_tmp.get());
 	      

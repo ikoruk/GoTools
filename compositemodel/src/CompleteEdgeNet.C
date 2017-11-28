@@ -45,7 +45,7 @@
 #include "GoTools/geometry/BoundedSurface.h"
 #include <fstream>
 
-#define DEBUG
+//#define DEBUG
 
 using std::vector;
 using std::make_pair;
@@ -139,6 +139,7 @@ void CompleteEdgeNet::addIdentifiedEdges(vector<pair<Point,Point> >& corr_vx_pts
 	  // @@@ VSK 012014. This is a case specific test which will fail if the
 	  // model gets complex enough. Wait for a failure.
 	  int idx1 = kj, idx2 = kr;
+	  //int idx1 = -1, idx2 = -1;
 	  identifyVertexConnection(vx, kj, kr, idx1, idx2);
 	  // @@@ VSK 022014. TEST MORE
 	  // if (idx1 < 0 || idx2 < 0)
@@ -1552,7 +1553,12 @@ bool CompleteEdgeNet::checkCurrConnection(vector<shared_ptr<Vertex> > vxs,
 	}
 
       if (kr == (int)faces1.size() && kh == (int)faces2.size())
-	return false;  // Do not connect at the current stage
+	{
+#ifdef DEBUG
+	  std::cout << "Missing edge: Check configuration" << std::endl;
+#endif
+	  //return false;  // Do not connect at the current stage
+	}
     }
 
   // // Check if the current candidate connection bypasses a better connection
@@ -1753,7 +1759,9 @@ void CompleteEdgeNet::addRemainingEdges()
 	    }
 	  if (minind < 0)
 	    {
+#ifdef DEBUG
 	      std::cout << "Negative index in add missing edges" << std::endl;
+#endif
 	    }
 	  acc_dist[kh] += mindist;
 	  if (minind >= 0)

@@ -54,7 +54,7 @@
 #include <fstream>
 #include <cstdlib>
 
-//#define DEBUG
+#define DEBUG
 
 using std::vector;
 using std::set;
@@ -1083,6 +1083,7 @@ CreateTrimVolume::checkCandPair(Point vec,
   sf2->write(of);
 #endif
 
+  double bend = model_->getTolerances().bend;
   ElementarySurface *elem1 = sf1->elementarySurface();
   ElementarySurface *elem2 = sf2->elementarySurface();
 
@@ -1148,7 +1149,17 @@ CreateTrimVolume::checkCandPair(Point vec,
   // identified axis
   Point diff = sf_pt1-sf_pt2;
   if (fabs(d1_2 - d2_2) < frac*d1_2)
-    return (diff*vec > 0.0) ? 1 : 2;
+    {
+      if (fabs(0.5*M_PI-diff.angle(vec)) < bend)
+	{
+	  // Almost orthogonal, prioritize the largest surface
+	  double bsize1 = box1.low().dist(box1.high());
+	  double bsize2 = box2.low().dist(box2.high());
+	  return (bsize1 >= bsize2) ? 1 : 2;
+	}
+      else
+	return (diff*vec > 0.0) ? 1 : 2;
+    }
   else 
     {
       // Find the most extreme surface in the outward direction
@@ -2057,7 +2068,8 @@ void
 			    }
 			}
 		      double dd = coord_pos[kh].dist(tmp_pos);
-		      if (fabs(ang - ang3) < lim_ang &&
+		      if ((fabs(ang - ang3) < lim_ang ||
+			   fabs(M_PI-fabs(ang-ang3)) < lim_ang) &&
 			  ang4 > lim_ang && dd > lim_dist)
 			{
 			  if (ix2 < 0 || ang4 > ang2)

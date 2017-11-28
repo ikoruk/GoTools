@@ -54,6 +54,7 @@ namespace Go
   class CurveOnSurface;
   class SplineCurve;
   class BoundedSurface;
+  class ParamSurface;
 
   /// This namespace contains service functions related to ftVolume
   namespace ftVolumeTools
@@ -80,9 +81,21 @@ namespace Go
 		   double* elem_par, ftVolume* trim_vol,
 		   double eps, std::vector<int>& is_inside);
 
+    /// Split one volume according to intersections with a given surface
+    std::vector<shared_ptr<ftVolume> >
+      splitVolumes(ftVolume* vol, 
+		   shared_ptr<ParamSurface>& surface, double eps,
+		   int create_all = 3);
+
     /// Split one volume according to intersections with a given face
     std::vector<shared_ptr<ftVolume> >
       splitVolumes(shared_ptr<ftVolume>& vol, 
+		   shared_ptr<ftSurface>& face, double eps,
+		   int create_all = 3);
+
+    /// Split one volume according to intersections with a given face
+    std::vector<shared_ptr<ftVolume> >
+      splitVolumes(ftVolume* vol, 
 		   shared_ptr<ftSurface>& face, double eps,
 		   int create_all = 3);
 

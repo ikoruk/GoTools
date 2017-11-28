@@ -337,7 +337,8 @@ namespace Go
     bool untrimRegular(int degree, bool accept_degen = false);
 
     /// Approximate parameter volume by a non-trimmed spline volume
-    shared_ptr<ParamVolume> getRegParVol(int degree, bool accept_degen = false);
+    shared_ptr<ParamVolume> getRegParVol(int degree, int bd_cond[6][2],
+					 bool accept_degen = false);
 
 /*     /// Split this and the corresponding volume with regard to the */
 /*     /// intersections between the boundary surfaces corresponding to */

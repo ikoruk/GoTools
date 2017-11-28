@@ -249,153 +249,11 @@ SurfaceModelUtils::sameUnderlyingSurf(vector<shared_ptr<ftSurface> >& sf_set,
 	    dynamic_pointer_cast<BoundedSurface, ParamSurface>(cand_sfs[kj]);
 	  shared_ptr<ParamSurface> under2 = bd_sf2->underlyingSurface();
 	  bool same = false;
-	  if (under1.get() == under2.get())
+	  if (under1.get() == under2.get() || 
+	      sameElementarySurface(under1, under2, tol, angtol))
 	    // Same underlying surface
 	    same = true;
 	  else
-	    {
-	      // Check for equality of elementary surfaces
-	      shared_ptr<ElementarySurface> elem1 = 
-		dynamic_pointer_cast<ElementarySurface, ParamSurface>(under1);
-	      if (!elem1.get() && under1->isSpline())
-		{
-		  shared_ptr<SplineSurface> spline = 
-		    dynamic_pointer_cast<SplineSurface, ParamSurface>(under1);
-		  if (spline.get())
-		    elem1 = spline->getElementarySurface();
-		}
-	      shared_ptr<ElementarySurface> elem2 = 
-		dynamic_pointer_cast<ElementarySurface, ParamSurface>(under2);
-	      if (!elem2.get() && under2->isSpline())
-		{
-		  shared_ptr<SplineSurface> spline = 
-		    dynamic_pointer_cast<SplineSurface, ParamSurface>(under2);
-		  if (spline.get())
-		    elem2 = spline->getElementarySurface();
-		}
-	      
-	      if (elem1.get() && elem2.get())
-		{
-		  // Both surfaces are elementary. Check for equality
-		  if (elem1->instanceType() == Class_Plane &&
-		      elem2->instanceType() == Class_Plane)
-		    {
-		      shared_ptr<Plane> plane1 = 
-			dynamic_pointer_cast<Plane, ElementarySurface>(elem1);
-		      shared_ptr<Plane> plane2 = 
-			dynamic_pointer_cast<Plane, ElementarySurface>(elem2);
-		      Point pt1 = plane1->getPoint();
-		      Point pt2 = plane2->getPoint();
-		      Point norm1 = plane1->getNormal();
-		      Point norm2 = plane2->getNormal();
-		      double ang = norm1.angle(norm2);
-		      if (ang < angtol || M_PI-ang < angtol)
-			{
-			  double len = fabs((pt2 - pt1)*norm1);
-			  if (len < tol)
-			    same = true;
-			}
-		    }
-		  else if (elem1->instanceType() == Class_Cylinder &&
-			   elem2->instanceType() == Class_Cylinder)
-		    {
-		      shared_ptr<Cylinder> cyl1 = 
-			dynamic_pointer_cast<Cylinder, ElementarySurface>(elem1);
-		      shared_ptr<Cylinder> cyl2 = 
-			dynamic_pointer_cast<Cylinder, ElementarySurface>(elem2);
-		      Point pt1 = cyl1->getLocation();
-		      Point pt2 = cyl2->getLocation();
-		      Point axis1 = cyl1->getAxis();
-		      Point axis2 = cyl2->getAxis();
-		      double rad1 = cyl1->getRadius();
-		      double rad2 = cyl2->getRadius();
-		      double ang = axis1.angle(axis2);
-		      if (fabs(rad1-rad2) < tol && 
-			  (ang < angtol || M_PI-ang < angtol))
-			{
-			  double len = fabs((pt2 - pt1)*axis1);
-			  if (len < tol)
-			    same = true;
-			}
-		    }
-		  else if (elem1->instanceType() == Class_Cone &&
-			   elem2->instanceType() == Class_Cone)
-		    {
-		      shared_ptr<Cone> cone1 = 
-			dynamic_pointer_cast<Cone, ElementarySurface>(elem1);
-		      shared_ptr<Cone> cone2 = 
-			dynamic_pointer_cast<Cone, ElementarySurface>(elem2);
-		      Point pt1 = cone1->getLocation();
-		      Point pt2 = cone2->getLocation();
-		      Point axis1 = cone1->getAxis();
-		      Point axis2 = cone2->getAxis();
-		      double rad1 = cone1->getRadius();
-		      double rad2 = cone2->getRadius();
-		      double angle1 = cone1->getConeAngle();
-		      double angle2 = cone2->getConeAngle();
-		      double ang = axis1.angle(axis2);
-		      if (fabs(angle1-angle2) < angtol && 
-			  (ang < angtol || M_PI-ang < angtol))
-			{
-			  double len = fabs((pt2 - pt1)*axis1);
-			  double d = pt1.dist(pt2);
-			  double tanalpha = tan(angle1);
-			  if (fabs(tanalpha) > tol)
-			    {
-			      double d1 = rad1/tanalpha;
-			      double d2 = rad2/tanalpha - d;
-			      if (len < tol && fabs(d1-d2) < tol)
-				same = true;
-			    }
-			  else if (fabs(rad1-rad2) < tol)
-			    same = true;
-			}
-		    }
-		  else if (elem1->instanceType() == Class_Sphere &&
-			   elem2->instanceType() == Class_Sphere)
-		    {
-		      shared_ptr<Sphere> sphere1 = 
-			dynamic_pointer_cast<Sphere, ElementarySurface>(elem1);
-		      shared_ptr<Sphere> sphere2 = 
-			dynamic_pointer_cast<Sphere, ElementarySurface>(elem2);
-		      Point pt1 = sphere1->getLocation();
-		      Point pt2 = sphere2->getLocation();
-		      double rad1 = sphere1->getRadius();
-		      double rad2 = sphere2->getRadius();
-		      double d = pt1.dist(pt2);
-		      if (d < tol && fabs(rad1-rad2) < tol)
-			same = true;
-		    }
-		  else if (elem1->instanceType() == Class_Torus &&
-			   elem2->instanceType() == Class_Torus)
-		    {
-		      shared_ptr<Torus> tor1 = 
-			dynamic_pointer_cast<Torus, ElementarySurface>(elem1);
-		      shared_ptr<Torus> tor2 = 
-			dynamic_pointer_cast<Torus, ElementarySurface>(elem2);
-		      Point pt1 = tor1->getLocation();
-		      Point pt2 = tor2->getLocation();
-		      double radmin1 = tor1->getMinorRadius();
-		      double radmin2 = tor2->getMinorRadius();
-		      double radmax1 = tor1->getMajorRadius();
-		      double radmax2 = tor2->getMajorRadius();
-		      double d = pt1.dist(pt2);
-		      Point x1, y1, z1, x2, y2, z2;
-		      tor1->getCoordinateAxes(x1, y1, z1);
-		      tor2->getCoordinateAxes(x2, y2, z2);
-		      double ang1 = x1.angle(x2);
-		      double ang2 = x1.angle(x2);
-		      double ang3 = x1.angle(x2);
-		      if (d < tol && fabs(radmin1-radmin2) < tol &&
-			  fabs(radmax1-radmax2) < tol &&
-			  (ang1 < angtol || M_PI-ang1 < angtol) &&
-			  (ang2 < angtol || M_PI-ang2 < angtol) &&
-			  (ang3 < angtol || M_PI-ang3 < angtol))
-			same = true;
-		    }
-		}
-	    }
-	  if (!same)
 	    {
 	      // Check coincidence
 	      Identity ident;
@@ -443,6 +301,151 @@ SurfaceModelUtils::sameUnderlyingSurf(vector<shared_ptr<ftSurface> >& sf_set,
 	}
       ki += incr;
     }
+}
+
+//===========================================================================
+bool
+SurfaceModelUtils::sameElementarySurface(shared_ptr<ParamSurface>& under1,
+					 shared_ptr<ParamSurface>& under2,
+					 double tol, double angtol)
+
+//===========================================================================
+{
+  bool same = false;
+
+  // Check for equality of elementary surfaces
+  shared_ptr<ParamSurface> parent1 = under1->getParentSurface();
+  shared_ptr<ParamSurface> parent2 = under2->getParentSurface();
+  shared_ptr<ElementarySurface> 
+    elem1 = dynamic_pointer_cast<ElementarySurface, ParamSurface>(under1);
+  shared_ptr<ElementarySurface> 
+    elem2 = dynamic_pointer_cast<ElementarySurface, ParamSurface>(under2);
+  if (!elem1.get() && parent1.get())
+    elem1 = dynamic_pointer_cast<ElementarySurface, ParamSurface>(parent1);
+  if (!elem2.get() && parent2.get())
+    elem2 = dynamic_pointer_cast<ElementarySurface, ParamSurface>(parent2);
+	      
+  if (elem1.get() && elem2.get())
+    {
+      // Both surfaces are elementary. Check for equality
+      if (elem1->instanceType() == Class_Plane &&
+	  elem2->instanceType() == Class_Plane)
+	{
+	  shared_ptr<Plane> plane1 = 
+	    dynamic_pointer_cast<Plane, ElementarySurface>(elem1);
+	  shared_ptr<Plane> plane2 = 
+	    dynamic_pointer_cast<Plane, ElementarySurface>(elem2);
+	  Point pt1 = plane1->getPoint();
+	  Point pt2 = plane2->getPoint();
+	  Point norm1 = plane1->getNormal();
+	  Point norm2 = plane2->getNormal();
+	  double ang = norm1.angle(norm2);
+	  if (ang < angtol || M_PI-ang < angtol)
+	    {
+	      double len = fabs((pt2 - pt1)*norm1);
+	      if (len < tol)
+		same = true;
+	    }
+	}
+      else if (elem1->instanceType() == Class_Cylinder &&
+	       elem2->instanceType() == Class_Cylinder)
+	{
+	  shared_ptr<Cylinder> cyl1 = 
+	    dynamic_pointer_cast<Cylinder, ElementarySurface>(elem1);
+	  shared_ptr<Cylinder> cyl2 = 
+	    dynamic_pointer_cast<Cylinder, ElementarySurface>(elem2);
+	  Point pt1 = cyl1->getLocation();
+	  Point pt2 = cyl2->getLocation();
+	  Point axis1 = cyl1->getAxis();
+	  Point axis2 = cyl2->getAxis();
+	  double rad1 = cyl1->getRadius();
+	  double rad2 = cyl2->getRadius();
+	  double ang = axis1.angle(axis2);
+	  if (fabs(rad1-rad2) < tol && 
+	      (ang < angtol || M_PI-ang < angtol))
+	    {
+	      double len = fabs((pt2 - pt1)*axis1);
+	      if (len < tol)
+		same = true;
+	    }
+	}
+      else if (elem1->instanceType() == Class_Cone &&
+	       elem2->instanceType() == Class_Cone)
+	{
+	  shared_ptr<Cone> cone1 = 
+	    dynamic_pointer_cast<Cone, ElementarySurface>(elem1);
+	  shared_ptr<Cone> cone2 = 
+	    dynamic_pointer_cast<Cone, ElementarySurface>(elem2);
+	  Point pt1 = cone1->getLocation();
+	  Point pt2 = cone2->getLocation();
+	  Point axis1 = cone1->getAxis();
+	  Point axis2 = cone2->getAxis();
+	  double rad1 = cone1->getRadius();
+	  double rad2 = cone2->getRadius();
+	  double angle1 = cone1->getConeAngle();
+	  double angle2 = cone2->getConeAngle();
+	  double ang = axis1.angle(axis2);
+	  if (fabs(angle1-angle2) < angtol && 
+	      (ang < angtol || M_PI-ang < angtol))
+	    {
+	      double len = fabs((pt2 - pt1)*axis1);
+	      double d = pt1.dist(pt2);
+	      double tanalpha = tan(angle1);
+	      if (fabs(tanalpha) > tol)
+		{
+		  double d1 = rad1/tanalpha;
+		  double d2 = rad2/tanalpha - d;
+		  if (len < tol && fabs(d1-d2) < tol)
+		    same = true;
+		}
+	      else if (fabs(rad1-rad2) < tol)
+		same = true;
+	    }
+	}
+      else if (elem1->instanceType() == Class_Sphere &&
+	       elem2->instanceType() == Class_Sphere)
+	{
+	  shared_ptr<Sphere> sphere1 = 
+	    dynamic_pointer_cast<Sphere, ElementarySurface>(elem1);
+	  shared_ptr<Sphere> sphere2 = 
+	    dynamic_pointer_cast<Sphere, ElementarySurface>(elem2);
+	  Point pt1 = sphere1->getLocation();
+	  Point pt2 = sphere2->getLocation();
+	  double rad1 = sphere1->getRadius();
+	  double rad2 = sphere2->getRadius();
+	  double d = pt1.dist(pt2);
+	  if (d < tol && fabs(rad1-rad2) < tol)
+	    same = true;
+	}
+      else if (elem1->instanceType() == Class_Torus &&
+	       elem2->instanceType() == Class_Torus)
+	{
+	  shared_ptr<Torus> tor1 = 
+	    dynamic_pointer_cast<Torus, ElementarySurface>(elem1);
+	  shared_ptr<Torus> tor2 = 
+	    dynamic_pointer_cast<Torus, ElementarySurface>(elem2);
+	  Point pt1 = tor1->getLocation();
+	  Point pt2 = tor2->getLocation();
+	  double radmin1 = tor1->getMinorRadius();
+	  double radmin2 = tor2->getMinorRadius();
+	  double radmax1 = tor1->getMajorRadius();
+	  double radmax2 = tor2->getMajorRadius();
+	  double d = pt1.dist(pt2);
+	  Point x1, y1, z1, x2, y2, z2;
+	  tor1->getCoordinateAxes(x1, y1, z1);
+	  tor2->getCoordinateAxes(x2, y2, z2);
+	  double ang1 = x1.angle(x2);
+	  double ang2 = x1.angle(x2);
+	  double ang3 = x1.angle(x2);
+	  if (d < tol && fabs(radmin1-radmin2) < tol &&
+	      fabs(radmax1-radmax2) < tol &&
+	      (ang1 < angtol || M_PI-ang1 < angtol) &&
+	      (ang2 < angtol || M_PI-ang2 < angtol) &&
+	      (ang3 < angtol || M_PI-ang3 < angtol))
+	    same = true;
+	}
+    }
+  return same;
 }
 
 //===========================================================================
@@ -569,7 +572,9 @@ SurfaceModelUtils::extendedUnderlyingSurface(vector<shared_ptr<ftSurface> >& sf_
 	      if (ang2 > angtol)
 		{
 		  Point v = axis1_1.cross(axis2_1);
+#ifdef DEBUG
 		  std::cout << "Reparameterization of cylinder. To be continued" << std::endl;
+#endif
 		}
 	      if (swapped)
 		{
@@ -630,7 +635,9 @@ SurfaceModelUtils::extendedUnderlyingSurface(vector<shared_ptr<ftSurface> >& sf_
 		}
 	      if (ang2 > angtol)
 		{
+#ifdef DEBUG
 		  std::cout << "Reparameterization of cone. To be continued" << std::endl;
+#endif
 
 		}
 	      if (swapped)
@@ -658,11 +665,15 @@ SurfaceModelUtils::extendedUnderlyingSurface(vector<shared_ptr<ftSurface> >& sf_
 	}
       else if (elem1->instanceType() == Class_Sphere)
 	{
+#ifdef DEBUG
 	  std::cout << "Sphere" << std::endl;
+#endif
 	}
       else if (elem1->instanceType() == Class_Torus)
 	{
+#ifdef DEBUG
 	  std::cout << "Torus" << std::endl;
+#endif
 	}
       else
 	return surf;  // Surface type not supported
@@ -1441,7 +1452,7 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 				       vector<shared_ptr<ParamSurface> >& sfs2,
 				       vector<bool>& at_bd2,
 				       Body *model2, double eps, double angtol,
-				       vector<vector<shared_ptr<ParamSurface> > >& groups)
+				       vector<vector<pair<shared_ptr<ParamSurface>, int> > >& groups)
 //===========================================================================
 {
   // Make trimmed surfaces and sort trimmed and non-trimmed surface according
@@ -1481,18 +1492,18 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	    shared_ptr<ParamSurface>(sfs1[ki]->clone());
 	  if (inside)
 	    {
-	      groups[0].push_back(tmp_surf);
+	      groups[0].push_back(make_pair(tmp_surf, ki));
 	      // 17102017 A missing symmetry regarding surfaces
 	      // coindident with the input model boundaries needs to
 	      // be resolved or verified
 	      if (fabs(pt_dist) < eps && M_PI-ang < angtol)
-		groups[1].push_back(shared_ptr<ParamSurface>(tmp_surf->clone()));
+		groups[1].push_back(make_pair(shared_ptr<ParamSurface>(tmp_surf->clone()), ki));
 	    }
 	  else
 	    {
-	      groups[1].push_back(shared_ptr<ParamSurface>(tmp_surf));
+	      groups[1].push_back(make_pair(tmp_surf, ki));
 	      if (fabs(pt_dist) < eps && ang < angtol)
-		groups[0].push_back(shared_ptr<ParamSurface>(tmp_surf->clone()));
+		groups[0].push_back(make_pair(shared_ptr<ParamSurface>(tmp_surf->clone()), ki));
 	    }
 	}
       else
@@ -1509,7 +1520,9 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	      }
 	      catch(...)
 		{
+#ifdef DEBUG
 		  std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 		}
 	    }
 	  for (size_t kr=0; kr<trim_sfs.size(); ++kr)
@@ -1537,7 +1550,7 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	      bool inside = model2->isInside(pnt, pt_dist, ang);
 	      if (inside)
 		{
-		  groups[0].push_back(trim_sfs[kr]);
+		  groups[0].push_back(make_pair(trim_sfs[kr], ki));
 		  // 17102017 A missing symmetry regarding surfaces
 		  // coindident with the input model boundaries needs to
 		  // be resolved or verified
@@ -1547,9 +1560,9 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 			      
 	      else
 		{
-		  groups[1].push_back(trim_sfs[kr]);
+		  groups[1].push_back(make_pair(trim_sfs[kr], ki));
 		  if (at_bd1[ki] && fabs(pt_dist) < eps && ang < angtol)
-		    groups[0].push_back(shared_ptr<ParamSurface>(trim_sfs[kr]->clone()));
+		    groups[0].push_back(make_pair(shared_ptr<ParamSurface>(trim_sfs[kr]->clone()), ki));
 		}
 	    }
 	}
@@ -1588,18 +1601,18 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	    shared_ptr<ParamSurface>(sfs2[ki]->clone());
 	  if (inside)
 	    {
-	      groups[2].push_back(tmp_surf);
+	      groups[2].push_back(make_pair(tmp_surf, ki));
 	      // 17102017 A missing symmetry regarding surfaces
 	      // coindident with the input model boundaries needs to
 	      // be resolved or verified
 	      if (fabs(pt_dist) < eps && M_PI-ang < angtol)
-		groups[3].push_back(shared_ptr<ParamSurface>(tmp_surf->clone()));
+		groups[3].push_back(make_pair(shared_ptr<ParamSurface>(tmp_surf->clone()), ki));
 	    }
 	  else
 	    {
-	      groups[3].push_back(shared_ptr<ParamSurface>(tmp_surf));
+	      groups[3].push_back(make_pair(tmp_surf, ki));
 	      if (fabs(pt_dist) < eps && ang < angtol)
-		groups[2].push_back(shared_ptr<ParamSurface>(tmp_surf->clone()));
+		groups[2].push_back(make_pair(shared_ptr<ParamSurface>(tmp_surf->clone()), ki));
 	    }
 	}
       else
@@ -1616,7 +1629,9 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	      }
 	      catch(...)
 		{
+#ifdef DEBUG
 		  std::cout << "Trimmed surfaces missing" << std::endl;
+#endif
 		}
 	    }
 	  for (size_t kr=0; kr<trim_sfs.size(); ++kr)
@@ -1644,7 +1659,7 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	      bool inside = model1->isInside(pnt, pt_dist, ang);
 	      if (inside)
 		{
-		  groups[2].push_back(trim_sfs[kr]);
+		  groups[2].push_back(make_pair(trim_sfs[kr], ki));
 		  // 17102017 A missing symmetry regarding surfaces
 		  // coindident with the input model boundaries needs to
 		  // be resolved or verified
@@ -1653,7 +1668,7 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 		}			      
 	      else
 		{
-		  groups[3].push_back(trim_sfs[kr]);
+		  groups[3].push_back(make_pair(trim_sfs[kr], ki));
 		  // 17102017 A missing symmetry regarding surfaces
 		  // coindident with the input model boundaries needs to
 		  // be resolved or verified
@@ -1670,23 +1685,23 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
   std::ofstream of4("outside2.g2");
   for (size_t ki=0; ki<groups[0].size(); ++ki)
     {
-      groups[0][ki]->writeStandardHeader(of1);
-      groups[0][ki]->write(of1);
+      groups[0][ki].first->writeStandardHeader(of1);
+      groups[0][ki].first->write(of1);
     }
   for (size_t ki=0; ki<groups[1].size(); ++ki)
     {
-      groups[1][ki]->writeStandardHeader(of2);
-      groups[1][ki]->write(of2);
+      groups[1][ki].first->writeStandardHeader(of2);
+      groups[1][ki].first->write(of2);
     }
   for (size_t ki=0; ki<groups[2].size(); ++ki)
     {
-      groups[2][ki]->writeStandardHeader(of3);
-      groups[2][ki]->write(of3);
+      groups[2][ki].first->writeStandardHeader(of3);
+      groups[2][ki].first->write(of3);
     }
   for (size_t ki=0; ki<groups[3].size(); ++ki)
     {
-      groups[3][ki]->writeStandardHeader(of4);
-      groups[3][ki]->write(of4);
+      groups[3][ki].first->writeStandardHeader(of4);
+      groups[3][ki].first->write(of4);
     }
 #endif
 }
@@ -1820,42 +1835,23 @@ SurfaceModelUtils::extremalPoint(shared_ptr<ParamSurface>& surface,
   // Convert the surface to a SISLSurf in order to use SISL functions
   // on it. The "false" argument dictates that the SISLSurf will only    
   // copy pointers to arrays, not the arrays themselves.
-    shared_ptr<SplineSurface> surf;
-    shared_ptr<BoundedSurface> bsurf;
-    const CurveBoundedDomain* bddomain = 0;
-    if (surface->instanceType() == Class_SplineSurface)
-	surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(surface);
-    else
+  shared_ptr<SplineSurface> tmp_spline;
+  SplineSurface* surf = surface->getSplineSurface();
+  if (!surf)
     {
-	bsurf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(surface);
-	if (bsurf.get())
-	  {
-	    while (bsurf->underlyingSurface()->instanceType() == 
-		   Class_BoundedSurface)
-	      bsurf = dynamic_pointer_cast<BoundedSurface, ParamSurface>(bsurf->underlyingSurface());	    
-	    RectDomain domain = bsurf->containingDomain();
-	    surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(bsurf->underlyingSurface());
-	    ASSERT(surf.get() != 0);
-	    if (bsurf->isIsoTrimmed(tol2d))
-	      {
-		RectDomain dom2 = surf->containingDomain();  // To avoid problems due to numerics
-		double umin = std::max(domain.umin(), dom2.umin());
-		double umax = std::min(domain.umax(), dom2.umax());
-		double vmin = std::max(domain.vmin(), dom2.vmin());
-		double vmax = std::min(domain.vmax(), dom2.vmax());
-    
-		vector<shared_ptr<ParamSurface> > sfs = surf->subSurfaces(umin, vmin, umax, vmax);
-		surf = dynamic_pointer_cast<SplineSurface, ParamSurface>(sfs[0]);
-	      }
-	    else
-	      bddomain = &(bsurf->parameterDomain());
-	  }
-
-	// Make the smallest possible underlying surface
+      // Convert to spline surface
+      tmp_spline = shared_ptr<SplineSurface>(surface->asSplineSurface());
+      surf = tmp_spline.get();
     }
-  ASSERT(surf.get() != 0);
+    const CurveBoundedDomain* bddomain = 0;
+    shared_ptr<BoundedSurface> bsurf = 
+      dynamic_pointer_cast<BoundedSurface, ParamSurface>(surface);
+    if (bsurf.get())
+      bddomain = &(bsurf->parameterDomain());
 
-  SISLSurf* sislsf = GoSurf2SISL(*(surf.get()), false);
+  ASSERT(surf != 0);
+
+  SISLSurf* sislsf = GoSurf2SISL(*surf, false);
   double epsge = 1.0e-6;
   int numintpt;  // number of single extremal points
   double* pointpar = 0; // array containing the parameter values of single extremal. pt.

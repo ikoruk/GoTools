@@ -818,6 +818,14 @@ class GO_API SurfaceModel : public CompositeModel
     mergeSeamCrvFaces(ftSurface* face1, ftSurface* face2, 
 		      std::vector<Point>& seam_joints);
 
+  shared_ptr<ftSurface> 
+    performMergeFace(shared_ptr<ParamSurface> base,
+		     vector<CurveLoop>& loops1, 
+		     vector<CurveLoop>& loops2,
+		     Body* bd,
+		     std::vector<Point>& seam_joints,
+		     int reverse, int cont=1);
+
   /// Approximate regular trimmed surfaces with spline
   /// surfaces and replace
   void replaceRegularSurfaces();
@@ -900,13 +908,7 @@ class GO_API SurfaceModel : public CompositeModel
 
   bool isInside(const Point& pnt, double& dist);
 
-  shared_ptr<ftSurface> 
-    performMergeFace(shared_ptr<ParamSurface> base,
-		     vector<CurveLoop>& loops1, 
-		     vector<CurveLoop>& loops2,
-		     Body* bd,
-		     std::vector<Point>& seam_joints,
-		     int reverse, int cont=1);
+  bool isInside(const Point& pnt, const Point& normal, double& dist);
 
   void makeCoonsBdCvs(vector<shared_ptr<ParamCurve> >& cvs1,
 		      double tol, int degree,
