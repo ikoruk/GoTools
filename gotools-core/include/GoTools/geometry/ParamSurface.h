@@ -82,6 +82,7 @@ public:
     }
 
     /// Return the spline surface associated to this surface, if any
+    /// No copying
     virtual SplineSurface* getSplineSurface() 
     {
       return 0;  // Default behaviour

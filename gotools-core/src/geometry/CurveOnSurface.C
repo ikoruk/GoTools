@@ -38,6 +38,7 @@
  */
 
 //#define SBR_DBG
+#define DEBUG
 
 #include "GoTools/geometry/CurveOnSurface.h"
 #include "GoTools/utils/BoundingBox.h"
@@ -882,11 +883,16 @@ void CurveOnSurface::appendCurve(ParamCurve* other_curve,
     double tol = 1.0e-4;
     if (prefer_parameter_ && (pcurve_.get() != NULL))
       {
+	// Save input curves
+	shared_ptr<ParamCurve> pcv1 = shared_ptr<ParamCurve>(pcurve_->clone());
+	shared_ptr<ParamCurve> pcv2 = shared_ptr<ParamCurve>(other_pcurve->clone());
 	try {
 	  pcurve_->appendCurve(other_pcurve.get(), continuity, dist, reparam);
 	}
 	catch (...)
 	  {
+	    pcurve_ = pcv1;
+	    other_pcurve = pcv2;
 	    shared_ptr<SplineCurve> tmp1 = 
 	      shared_ptr<SplineCurve>(pcurve_->geometryCurve());
 	    shared_ptr<SplineCurve> tmp2 = 
@@ -899,12 +905,18 @@ void CurveOnSurface::appendCurve(ParamCurve* other_curve,
       }
     else 
       {
+	// Save input curves
+	shared_ptr<ParamCurve> scv1 = shared_ptr<ParamCurve>(spacecurve_->clone());
+	shared_ptr<ParamCurve> scv2 = 
+	  shared_ptr<ParamCurve>(other_spacecurve->clone()); 
 	double pardist;
 	try {
 	  spacecurve_->appendCurve(other_spacecurve.get(), continuity, dist, reparam);
 	}
 	catch (...)
 	  {
+	    spacecurve_ = scv1;
+	    other_spacecurve = scv2;
 	    shared_ptr<SplineCurve> tmp1 = 
 	      shared_ptr<SplineCurve>(spacecurve_->geometryCurve());
 	    shared_ptr<SplineCurve> tmp2 = 
@@ -925,11 +937,18 @@ void CurveOnSurface::appendCurve(ParamCurve* other_curve,
 	{
 	    if (continuity < 1 && (!reparam))
 	    {
+	      // Save input curves
+	      shared_ptr<ParamCurve> pcv1 = 
+		shared_ptr<ParamCurve>(pcurve_->clone());
+	      shared_ptr<ParamCurve> pcv2 = 
+		shared_ptr<ParamCurve>(other_pcurve->clone());
 		try {
 		    pcurve_->appendCurve(other_pcurve.get(), continuity, pardist, reparam);
 		}
 		catch (...)
 		{
+		  pcurve_ = pcv1;
+		  other_pcurve = pcv2;
 		    shared_ptr<SplineCurve> tmp1 = 
 			shared_ptr<SplineCurve>(pcurve_->geometryCurve());
 		    shared_ptr<SplineCurve> tmp2 = 
@@ -956,11 +975,28 @@ void CurveOnSurface::appendCurve(ParamCurve* other_curve,
 		// par4 = Point(u2,v2);
 		// tol = std::max(tol, std::max(d1,d2));
 
+		shared_ptr<ParamCurve> pcv1 = 
+		  shared_ptr<ParamCurve>(pcurve_->clone());
 		pcurve_.reset();
-		if (false /*reparam*/)
-		    ensureParCrvExistence(tol);
-		else
-		    makeParameterCurve(tol, par1, par4);
+#ifdef DEBUG
+		std::ofstream ofa("append.g2");
+		scv1->writeStandardHeader(ofa);
+		scv1->write(ofa);
+		scv2->writeStandardHeader(ofa);
+		scv2->write(ofa);
+#endif
+		ensureParCrvExistence(tol);
+		if (!pcurve_.get())
+		  {
+		    // Undo append
+		    pcurve_ = pcv1;
+		    spacecurve_ = scv1;
+		    other_spacecurve = scv2;
+
+		    // Set negative distance to indicate that no
+		    // append has taken place
+		    dist = -1.0;
+		  }
 	    }
 #ifdef DEBUG
 	    pcurve_->writeStandardHeader(of);
@@ -1474,6 +1510,9 @@ bool CurveOnSurface::ensureParCrvExistence(double epsgeo,
       if (notfound == false && pos.dimension() == close.dimension() &&
 	  pos.dist(close) < epspar)
 	{
+	  // Add this point to the candidate start parameters
+	  start.push_back(Point(upar,vpar));
+
 	  // The point lies at a boundary. Check the opposite boundary
 	  if (startpt[0] - dom.umin() < epspar)
 	    {
@@ -1521,6 +1560,9 @@ bool CurveOnSurface::ensureParCrvExistence(double epsgeo,
       if (notfound == false && pos.dimension() == close.dimension() &&
 	  pos.dist(close) < epspar)
 	{
+	  // Add this point to the candidate end parameters
+	  end.push_back(Point(upar,vpar));
+
 	  // The point lies at a boundary. Check the opposite boundary
 	  if (endpt[0] - dom.umin() < epspar)
 	    {
@@ -2415,6 +2457,17 @@ bool CurveOnSurface::isAxisRotational(Point& centre, Point& axis, Point& vec,
 {
   if (spacecurve_.get())
     return spacecurve_->isAxisRotational(centre, axis, vec, angle);
+  else
+    return false;
+}
+
+//===========================================================================
+bool CurveOnSurface::isAxisRotational(Point& centre, Point& axis, Point& vec,
+				      double& angle, double& radius)
+//===========================================================================
+{
+  if (spacecurve_.get())
+    return spacecurve_->isAxisRotational(centre, axis, vec, angle, radius);
   else
     return false;
 }

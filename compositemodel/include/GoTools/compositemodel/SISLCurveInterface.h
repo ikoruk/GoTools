@@ -37,52 +37,31 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-#ifndef _MODIFYFACESET_H
-#define _MODIFYFACESET_H
+#ifndef __SISLCURVEINTERFACE_H
+#define __SISLCURVEINTERFACE_H
 
-namespace Go {
+#include "GoTools/geometry/SplineCurve.h"
+#include "GoTools/utils/Point.h"
 
-  class ftEdge;
-  class Vertex;
-  class ftSurface;
-
-  /// Split a face set to simplify the input to trivariate block structuring
-  /// Currently: Split in sharp concave edges. Only on special configuration 
-  /// is handled
-
-class ModifyFaceSet
+namespace Go
 {
- public:
+  /// Interface functionality to SISL. Curve related.
 
-   /// Constructor
-  ModifyFaceSet(shared_ptr<SurfaceModel> model);
+  namespace SISLCurveInterface
+  {
+    /// Interpolate a set of points. The points can be assigned a tangent.
+    /// The parameterization is automatically generated. Will produce an
+    /// open curve
+    /// Interface to sisl function s1356
+    /// Type
+    /// 1 - ordinary point
+    /// 2 - derivative to prior point
+    /// 3 - derivative to next point
+    shared_ptr<SplineCurve> interpolate(std::vector<Point>& pnts, 
+					std::vector<int>& type,
+					int degree);
+  }
+}
 
-  /// Destructor
-  ~ModifyFaceSet();
+#endif
 
-  /// Identify a surface to use in a Boolean operation to
-  /// split the model
-  void
-    getSplittingSurface(std::vector<shared_ptr<ParamSurface> >& split_sfs,
-			std::vector<ftSurface*>& corr_faces,
-			std::vector<std::vector<ftEdge*> >& edges);
-
-  /// Return the resulting face set as a surface model
-  shared_ptr<SurfaceModel> getModifiedModel(int& nmb);
-
-
- private:
-  shared_ptr<SurfaceModel> model_;
-
-    // Perform division
-  int divide();
-
-  std::vector<ftEdge*> fetchSharpEdges();
-
-  ftSurface*  fetchNextFace(ftEdge* edge, Vertex* vx, double angtol,
-			    ftEdge*& next_edge, double& angle);
-};
-
-}  // namespace Go
-
-#endif // _MODIFYFACESET_H

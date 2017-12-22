@@ -265,7 +265,48 @@ class FaceConnectivityUtils
 		if (e->hasConnectivityInfo())
 		  {
 		    int status = e->getConnectivityInfo()->WorstStatus();
-		    if (status <= 1)
+		    if (status <= 1 || status == 3)
+		      {
+			// Kinks are accepted, but not G1 discontinuities
+			// Check if this instance is stored already
+			size_t r;
+			for (r=0; r<vec.size(); ++r)
+			  {
+			    if (vec[r] == e || vec[r] == e->twin())
+			      break;
+			  }
+			if (r == vec.size())
+			  vec.push_back(e);   // Only one edge in a twin pair is stored
+		      }
+		  }
+		
+		e = e->next();
+		if (e == orig)
+		  break;
+	      }
+	  }
+      }
+  }
+
+  //=======================================================================
+  void smoothEdges(const std::vector<faceType*>& faces,
+		   std::vector<edgeType*>& vec)
+  //=======================================================================
+  {
+    vec.clear();
+    for (size_t i=0; i<faces.size(); ++i)
+      {
+	std::vector<shared_ptr<edgeType> > start_edges = faces[i]->startEdges();
+	for (size_t j=0; j<start_edges.size(); ++j)
+	  {
+	    edgeType* e = start_edges[j].get();
+	    edgeType* orig = e;
+	    while (true) 
+	      {
+		if (e->hasConnectivityInfo())
+		  {
+		    int status = e->getConnectivityInfo()->WorstStatus();
+		    if (status <= 1 || status == 3)
 		      {
 			// Kinks are accepted, but not G1 discontinuities
 			// Check if this instance is stored already

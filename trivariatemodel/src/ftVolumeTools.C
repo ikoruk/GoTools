@@ -37,8 +37,8 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-//#define DEBUG_VOL
-//#define DEBUG
+#define DEBUG_VOL
+#define DEBUG
 
 #include "GoTools/trivariatemodel/ftVolumeTools.h"
 #include "GoTools/trivariatemodel/ftVolume.h"
@@ -512,123 +512,18 @@ ftVolumeTools::splitVolumes(ftVolume* vol,
   // Check for identical faces between the surfaces of the initial face
   // internal to the initial volume that are coincident with a surface in any
   // of the new volume pieces. These surfaces must be removed
-  int nmb = (!split_models[2].get()) ? 0 : split_models[2]->nmbEntities();
-  for (kj=0; kj<nmb; ++kj)
-    {
-      shared_ptr<ParamSurface> surf1 = split_models[2]->getSurface(kj);
-      int nmb2 = (!split_models[0].get()) ? 0 : split_models[0]->nmbEntities();
-      int kr;
-      for (kr=0; kr<nmb2; ++kr)
-	{
-	  shared_ptr<ParamSurface> surf2 = split_models[0]->getSurface(kr);
-	  Identity ident;
-	  int coinc = ident.identicalSfs(surf1, surf2, tol);
-	  if (coinc > 0)
-	    break;
-	}
-      if (kr < nmb2)
-	{
-	  split_models[2]->removeFace(split_models[2]->getFace(kj));
-	  --kj;
-	  --nmb;
-	}
-      else
-	{
-	  nmb2 = (!split_models[1].get()) ? 0 : split_models[1]->nmbEntities();
-	  for (kr=0; kr<nmb2; ++kr)
-	    {
-	      shared_ptr<ParamSurface> surf2 = split_models[1]->getSurface(kr);
-	      Identity ident;
-	      int coinc = ident.identicalSfs(surf1, surf2, tol);
-	      if (coinc > 0)
-		break;
-	    }
-	  if (kr < nmb2)
-	    {
-	      split_models[2]->removeFace(split_models[2]->getFace(kj));
-	      --kj;
-	      --nmb;
-	    }
-	}
-    }
+  removeCoincFaces(split_models[0], split_models[1], split_models[2], tol);
+
   // For each surface from the initial face internal to the initial volume: make a copy, swap
   // the parameter directions of this copy, and add it to the outside
   // part of the other volume.
   // Set also twin pointers between corresponding boundary surfaces
 #ifdef DEBUG_VOL
-  std::cout << "Model 3(2): " << split_models[3]->nmbEntities() << std::endl;
+  if (split_models[3].get())
+    std::cout << "Model 3(2): " << split_models[3]->nmbEntities() << std::endl;
 #endif
-
-  nmb = (!split_models[2].get()) ? 0 : split_models[2]->nmbEntities();
-  for (kj=0; kj<nmb; ++kj)
-    {
-      shared_ptr<ftSurface> face1 = split_models[2]->getFace(kj);
-      face1->setBody(vol);
-      if (face1->twin())
-	continue;
-      shared_ptr<ParamSurface> surf1 = split_models[2]->getSurface(kj);
-      shared_ptr<ParamSurface> surf2(surf1->clone());
-      surf2->swapParameterDirection();
-
-      shared_ptr<BoundedSurface> bd_surf1 = 
-	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf1);
-      if (bd_surf1.get())
-	surf1 = bd_surf1->underlyingSurface();
-      shared_ptr<BoundedSurface> bd_surf2 = 
-	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf2);
-      if (bd_surf2.get())
-	surf2 = bd_surf2->underlyingSurface();
-
-      // Make surface on volume surfaces
-      shared_ptr<ParamVolume> geomvol = vol->getVolume();
-      shared_ptr<ParamSurface> dummy;
-      if (surf1->instanceType() != Class_SurfaceOnVolume)
-	{
-	  shared_ptr<SurfaceOnVolume> vol_sf1 =
-	    shared_ptr<SurfaceOnVolume>(new SurfaceOnVolume(geomvol, dummy, 
-							    surf1, false));
-	  vol_sf1->setCreationHistory(1);  // Mark as internal splitting surface
-	  if (bd_surf1.get())
-	    {
-	      bd_surf1->replaceSurf(vol_sf1);
-	      surf1 = bd_surf1;
-	    }
-	  else
-	    surf1 = vol_sf1;
-	}
-      if (surf2->instanceType() != Class_SurfaceOnVolume)
-	{
-	  shared_ptr<SurfaceOnVolume> vol_sf2 =
-	    shared_ptr<SurfaceOnVolume>(new SurfaceOnVolume(geomvol, dummy, 
-							    surf2, false));
-	  vol_sf2->setCreationHistory(1);
-	  if (bd_surf2.get())
-	    {
-	      bd_surf2->replaceSurf(vol_sf2);
-	      surf2 = bd_surf2;
-	    }
-	  else
-	    surf2 = vol_sf2;
-	}    
-
-#ifdef DEBUG_VOL
-      std::ofstream of("curr_face.g2");
-      surf2->writeStandardHeader(of);
-      surf2->write(of);
-#endif
-
-      shared_ptr<ftSurface> face1_2(new ftSurface(surf1, -1));
-      face1_2->setBody(vol);
-      split_models[0]->append(face1_2, true, false, true);
-      shared_ptr<ftSurface> face2(new ftSurface(surf2, -1));
-      face2->setBody(vol);
-      split_models[1]->append(face2, true, false, true);
-      int ix = split_models[1]->getIndex(face2);
-      if (ix >= 0 && create_all == 3)
-	face1->connectTwin(face2.get(), eps);
-      int stop_break;
-      stop_break = 1;
-    }
+  closeModelParts(split_models[0], split_models[1], vol, split_models[2], 
+		  1, eps, create_all);
 
 #ifdef DEBUG_VOL
   // Debug 
@@ -1041,6 +936,38 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	}
     }
 
+  // Intersection curves found by projection may relate to different 
+  // bounded surfaces. Ensure consistence
+  for (size_t kr=0; kr<all_int_cvs1.size(); ++kr)
+    {
+      shared_ptr<BoundedSurface> bd_sf =
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs1[kr]);
+      if (bd_sf.get())
+	{
+	  shared_ptr<ParamSurface> tmp_sf = bd_sf->underlyingSurface();
+	  for (size_t kh=0; kh<all_int_cvs1[kr].size(); ++kh)
+	    {
+	      if (all_int_cvs1[kr][kh]->underlyingSurface().get() != tmp_sf.get())
+		all_int_cvs1[kr][kh]->setUnderlyingSurface(tmp_sf);
+	    }
+	}
+    }
+
+  for (size_t kr=0; kr<all_int_cvs2.size(); ++kr)
+    {
+      shared_ptr<BoundedSurface> bd_sf =
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs2[kr]);
+      if (bd_sf.get())
+	{
+	  shared_ptr<ParamSurface> tmp_sf = bd_sf->underlyingSurface();
+	  for (size_t kh=0; kh<all_int_cvs2[kr].size(); ++kh)
+	    {
+	      if (all_int_cvs2[kr][kh]->underlyingSurface().get() != tmp_sf.get())
+		all_int_cvs2[kr][kh]->setUnderlyingSurface(tmp_sf);
+	    }
+	}
+    }
+
 #ifdef DEBUG
   std::ofstream of0("intcurves.g2");
   for (size_t ki=0; ki<nmb_elem; ++ki)
@@ -1272,7 +1199,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	      // on the distance between original and modified curves
 	      double max_loop_dist;
 	      bool simplified = 
-		bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
+	      	bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
 	      int stop_break = 1;
 	    }
 
@@ -1337,6 +1264,15 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  for (size_t ki=0; ki<sliver_ix.size(); ++ki)
 	    split_groups[0].erase(split_groups[0].begin()+sliver_ix[sliver_ix.size()-ki-1]);
 	}
+
+#ifdef DEBUG
+      std::ofstream of_sf1("sf_group1.g2");
+      for (size_t ki=0; ki<split_groups[0].size(); ++ki)
+	{
+	  split_groups[0][ki].first->writeStandardHeader(of_sf1);
+	  split_groups[0][ki].first->write(of_sf1);
+	}
+#endif
 
       // Create faces
       vector<shared_ptr<ftSurface> > split_faces1;
@@ -1404,7 +1340,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	      // on the distance between original and modified curves
 	      double max_loop_dist;
 	      bool simplified = 
-		bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
+	      	bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
 	      int stop_break = 1;
 	    }
 
@@ -1470,6 +1406,14 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  for (size_t ki=0; ki<sliver_ix.size(); ++ki)
 	    split_groups[1].erase(split_groups[1].begin()+sliver_ix[sliver_ix.size()-ki-1]);
 	}
+#ifdef DEBUG
+      std::ofstream of_sf2("sf_group2.g2");
+      for (size_t ki=0; ki<split_groups[1].size(); ++ki)
+	{
+	  split_groups[1][ki].first->writeStandardHeader(of_sf2);
+	  split_groups[1][ki].first->write(of_sf2);
+	}
+#endif
 
       // Create faces
       vector<shared_ptr<ftSurface> > split_faces2;
@@ -1527,6 +1471,276 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
   return result;
 }
 
+//===========================================================================
+vector<shared_ptr<ftVolume> >
+ftVolumeTools::splitWithSplitSf(ftVolume* vol, shared_ptr<ParamSurface> surf,
+				vector<ftEdge*> edges,
+				double eps, int create_models)
+//===========================================================================
+{
+  vector<shared_ptr<ftVolume> > result;
+  vector<shared_ptr<SurfaceModel> > shells = vol->getAllShells();
+
+  // Perform intersections, but when already existing information exists in
+  // edges, use that
+  if (shells.size() == 0)
+    return result;   // No splitting faces
+  int nmb = shells[0]->nmbEntities();
+  for (size_t ki=1; ki<shells.size(); ++ki)
+    nmb += shells[ki]->nmbEntities();
+  vector<shared_ptr<ftSurface> > faces;
+  tpTolerances toptol = shells[0]->getTolerances();
+  BoundingBox box1 = surf->boundingBox();
+  vector<vector<shared_ptr<CurveOnSurface> > > all_int_cvs1(1);
+  vector<shared_ptr<ParamSurface> > sfs1(1);
+  sfs1[0] = surf;
+  vector<vector<shared_ptr<CurveOnSurface> > > all_int_cvs2(nmb);
+  vector<shared_ptr<ParamSurface> > sfs2(nmb);
+  size_t ix=0;
+  vector<shared_ptr<CurveOnSurface> > pre_known;
+  for (size_t ki=0; ki<shells.size(); ++ki)
+    {
+      int nmb = shells[ki]->nmbEntities();
+      for (int kj=0; kj<nmb; ++kj, ++ix)
+	{
+	  shared_ptr<ftSurface> curr_face = shells[ki]->getFace(kj);
+	  shared_ptr<ParamSurface> surf2 = curr_face->surface();
+	  faces.push_back(curr_face);
+
+	  // Check if an intersection exists already
+	  size_t kr;
+	  for (kr=0; kr<edges.size(); ++kr)
+	    {
+	      if (edges[kr]->face() == curr_face.get() ||
+		  (edges[kr]->twin() && 
+		   edges[kr]->twin()->face() == curr_face.get()))
+		break;
+	    }
+	  if (kr < edges.size())
+	    {
+	      // Use existing information
+	      ftEdge *curr_edge = (edges[kr]->face() == curr_face.get()) ?
+		edges[kr] : edges[kr]->twin()->geomEdge();
+	      if (curr_edge == NULL)
+		sfs2[ix] = surf2;
+	      else
+		{
+		  shared_ptr<ParamCurve> crv = curr_edge->geomCurve();
+		  shared_ptr<CurveOnSurface> sf_crv =
+		    dynamic_pointer_cast<CurveOnSurface,ParamCurve>(crv);
+		  sfs2[ix] = surf2;
+		  if (sf_crv.get())
+		    {
+		      all_int_cvs2[ix].push_back(sf_crv);
+		      pre_known.push_back(sf_crv);
+		      shared_ptr<CurveOnSurface> cv1(new CurveOnSurface(surf,
+									sf_crv->spaceCurve(), 
+									false));
+		      cv1->ensureSpaceCrvExistence(eps);
+		      all_int_cvs1[0].push_back(cv1);
+		    }
+		  else
+		    {
+		      shared_ptr<CurveOnSurface> cv1(new CurveOnSurface(surf,
+									crv,
+									false));
+		      cv1->ensureSpaceCrvExistence(eps);
+		      all_int_cvs1[0].push_back(cv1);
+		      pre_known.push_back(cv1);
+		      shared_ptr<CurveOnSurface> cv2(new CurveOnSurface(surf2,
+									crv,
+									false));
+		      cv2->ensureSpaceCrvExistence(eps);
+		      all_int_cvs1[ix].push_back(cv2);
+		    }
+		}
+	    }
+	  else
+	    {
+	      // Perform intersection
+	      BoundingBox box2 = surf2->boundingBox();
+#ifdef DEBUG
+	      std::ofstream out("curr_sf_int.g2");
+	      surf->writeStandardHeader(out);
+	      surf->write(out);
+	      surf2->writeStandardHeader(out);
+	      surf2->write(out);
+#endif
+
+	      if (box1.overlaps(box2, eps))
+		{
+		  shared_ptr<BoundedSurface> bd1, bd2;
+		  vector<shared_ptr<CurveOnSurface> > int_cv1, int_cv2;
+		  BoundedUtils::getSurfaceIntersections(surf, 
+							surf2, eps,
+							int_cv1, bd1,
+							int_cv2, bd2);
+		  sfs1[0] = bd1;
+		  sfs2[ix] = bd2;
+		  if (int_cv1.size() > 0)
+		    {
+		      all_int_cvs1[0].insert(all_int_cvs1[ki].end(), 
+					     int_cv1.begin(), int_cv1.end());
+		      all_int_cvs2[ix].insert(all_int_cvs2[kj].end(), 
+					      int_cv2.begin(), int_cv2.end());
+		    }
+		}
+	      else
+		sfs2[ix] = surf2;
+	    }
+	}
+    }
+
+  if (pre_known.size() > 0)
+    {
+      // Intersection curves may intersect each other
+      double knot_diff_tol = 1e-05;
+      BoundedUtils::splitIntersectingCurves(all_int_cvs1[0], pre_known, 
+					    eps, knot_diff_tol);
+      for (size_t ki=0; ki<all_int_cvs2.size(); ++ki)
+	BoundedUtils::splitIntersectingCurves(all_int_cvs2[ki], pre_known, 
+					      eps, knot_diff_tol);
+    }
+
+#ifdef DEBUG
+  std::ofstream of0("intcurves_models.g2");
+  for (size_t km=0; km<all_int_cvs1[0].size(); ++km)
+    {
+      shared_ptr<ParamCurve> tmpcv = all_int_cvs1[0][km]->spaceCurve();
+      tmpcv->writeStandardHeader(of0);
+      tmpcv->write(of0);
+    }
+  for (int kj=0; kj<nmb; ++kj)
+    {
+      for (size_t km=0; km<all_int_cvs2[kj].size(); ++km)
+	{
+	  shared_ptr<ParamCurve> tmpcv = all_int_cvs2[kj][km]->spaceCurve();
+	  tmpcv->writeStandardHeader(of0);
+	  tmpcv->write(of0);
+	}
+    }
+#endif
+
+  // Make trimmed surfaces and sort trimmed and non-trimmed surfaces according
+  // to whether they are inside or outside the trimming shell
+  vector<shared_ptr<ftSurface> > split_faces;
+  split_faces.push_back(shared_ptr<ftSurface>(new ftSurface(surf, -1)));
+  shared_ptr<SurfaceModel> split_shell(new SurfaceModel(split_faces, eps));
+  vector<vector<pair<shared_ptr<ParamSurface>, int> > > split_groups(4);
+  vector<bool> at_bd1(sfs1.size(), false);
+  vector<bool> at_bd2(sfs2.size(), false);
+  SurfaceModelUtils::sortTrimmedSurfaces(all_int_cvs2, sfs2, at_bd2, vol, 
+					 all_int_cvs1, sfs1, at_bd1, NULL, 
+					 eps, 
+					 toptol.bend,
+					 split_groups, 
+					 NULL, split_shell.get());
+
+
+  removeCoincSurfs(split_groups[0], split_groups[1], split_groups[2], eps);
+
+  // Make surface models
+  vector<shared_ptr<SurfaceModel> > models(4);
+  for (int ka=0; ka<4; ++ka)
+    {
+      vector<shared_ptr<ftSurface> > split_faces;
+      for (size_t ki=0; ki<split_groups[ka].size(); ++ki)
+	{
+	  shared_ptr<ftSurface> tmp_face(new ftSurface(split_groups[ka][ki].first, -1));
+
+	  // Set eventual boundary conditions. First fetch original face
+	  int id = split_groups[ka][ki].second;
+	  if (ka < 2)
+	    {
+	      shared_ptr<ftSurface> tmp_face2 = faces[id];
+	      if (tmp_face2->hasBoundaryConditions())
+		{
+		  int bd_type, bd;
+		  tmp_face2->getBoundaryConditions(bd_type, bd);
+		  tmp_face->setBoundaryConditions(bd_type, bd);
+		}
+	    }
+	  split_faces.push_back(tmp_face);
+	}
+      shared_ptr<SurfaceModel> mod;
+      try {
+	mod = shared_ptr<SurfaceModel>(new SurfaceModel(toptol.gap, toptol.gap,
+							toptol.neighbour,
+							toptol.kink, 
+							toptol.bend,
+							split_faces));
+      }
+      catch (...)
+	{
+	  continue;
+	}
+      models[ka] = mod;
+    }
+
+  // Make closed models by adding faces from the internal part of the
+  // splitting surface
+  closeModelParts(models[0], models[1], vol, models[2], 1, eps, 
+		  create_models);
+
+#ifdef DEBUG_VOL
+  // Debug 
+  if (models[0].get())
+    {
+      std::ofstream of("part_1.g2");
+      int nmb = models[0]->nmbEntities();
+      for (int kj=0; kj<nmb; ++kj)
+	{
+	  shared_ptr<ParamSurface> surf = models[0]->getSurface(kj);
+	  surf->writeStandardHeader(of);
+	  surf->write(of);
+	}
+    }
+  if (models[1].get())
+    {
+      std::ofstream of("part_2.g2");
+      int nmb = models[1]->nmbEntities();
+      for (int kj=0; kj<nmb; ++kj)
+	{
+	  shared_ptr<ParamSurface> surf = models[1]->getSurface(kj);
+	  surf->writeStandardHeader(of);
+	  surf->write(of);
+	}
+    }
+
+#endif
+
+  // Separate surface models into connected sets and make 
+  // corresponding volumes
+  vector<shared_ptr<SurfaceModel> > sep_models;
+  if (models[0] && (create_models == 1 || create_models >= 3))
+    {
+    sep_models =models[0]->getConnectedModels();
+    for (size_t ki=0; ki<sep_models.size(); ++ki)
+      {
+	shared_ptr<ftVolume> curr(new ftVolume(vol->getVolume(), 
+					       sep_models[ki]));
+	if (vol->hasMaterialInfo())
+	  curr->setMaterial(vol->getMaterial());
+	result.push_back(curr);
+      }
+    }
+  
+  if (models[1] && (create_models == 2 || create_models >= 3))
+    {
+      sep_models.clear();
+      sep_models = models[1]->getConnectedModels();
+      for (size_t ki=0; ki<sep_models.size(); ++ki)
+	{
+	  shared_ptr<ftVolume> curr(new ftVolume(vol->getVolume(), 
+						 sep_models[ki]));
+	  if (vol->hasMaterialInfo())
+	    curr->setMaterial(vol->getMaterial());
+	  result.push_back(curr);
+	}
+    }
+
+  return result;
+}
 
 //===========================================================================
 // 
@@ -2682,5 +2896,192 @@ ftVolumeTools::checkIntCvCoincidence(shared_ptr<CurveOnSurface> *project_cvs,
 	      break;
 	    }
 	}
+    }
+}
+
+//===========================================================================
+// 
+// 
+void
+ftVolumeTools::removeCoincFaces(shared_ptr<SurfaceModel>& mod1,
+				shared_ptr<SurfaceModel>& mod2,
+				shared_ptr<SurfaceModel>& mod3,
+				double tol)
+
+//===========================================================================
+{
+  // Check for surfaces in mod3 that are identical with surfaces in
+  // mod1 or mod2. Remove those surfaces
+  int nmb = (!mod3.get()) ? 0 : mod3->nmbEntities();
+  for (int kj=0; kj<nmb; ++kj)
+    {
+      shared_ptr<ParamSurface> surf1 = mod3->getSurface(kj);
+      int nmb2 = (!mod1.get()) ? 0 : mod1->nmbEntities();
+      int kr;
+      for (kr=0; kr<nmb2; ++kr)
+	{
+	  shared_ptr<ParamSurface> surf2 = mod1->getSurface(kr);
+	  Identity ident;
+	  int coinc = ident.identicalSfs(surf1, surf2, tol);
+	  if (coinc > 0)
+	    break;
+	}
+      if (kr < nmb2)
+	{
+	  mod3->removeFace(mod3->getFace(kj));
+	  --kj;
+	  --nmb;
+	}
+      else
+	{
+	  nmb2 = (!mod2.get()) ? 0 : mod2->nmbEntities();
+	  for (kr=0; kr<nmb2; ++kr)
+	    {
+	      shared_ptr<ParamSurface> surf2 = mod2->getSurface(kr);
+	      Identity ident;
+	      int coinc = ident.identicalSfs(surf1, surf2, tol);
+	      if (coinc > 0)
+		break;
+	    }
+	  if (kr < nmb2)
+	    {
+	      mod3->removeFace(mod3->getFace(kj));
+	      --kj;
+	      --nmb;
+	    }
+	}
+    }
+}
+
+//===========================================================================
+// 
+// 
+void
+ftVolumeTools::removeCoincSurfs(vector<pair<shared_ptr<ParamSurface>,int> >& grp1,
+				vector<pair<shared_ptr<ParamSurface>,int> >& grp2,
+				vector<pair<shared_ptr<ParamSurface>,int> >& grp3,
+				double tol)
+
+//===========================================================================
+{
+  // Check for surfaces in grp3 that are identical with surfaces in
+  // grp1 or grp2. Remove those surfaces
+  size_t nmb = grp3.size();
+  for (size_t kj=0; kj<nmb; )
+    {
+      size_t nmb2 = grp1.size();
+      size_t kr;
+      for (kr=0; kr<nmb2; ++kr)
+	{
+	  Identity ident;
+	  int coinc = ident.identicalSfs(grp3[kj].first, grp1[kr].first, tol);
+	  if (coinc > 0)
+	    break;
+	}
+      if (kr < nmb2)
+	{
+	  grp3.erase(grp3.begin()+kj);
+	  --nmb;
+	}
+      else
+	{
+	  nmb2 = grp2.size();
+	  for (kr=0; kr<nmb2; ++kr)
+	    {
+	      Identity ident;
+	      int coinc = ident.identicalSfs(grp3[kj].first, grp2[kr].first, tol);
+	      if (coinc > 0)
+		break;
+	    }
+	  if (kr < nmb2)
+	    {
+	      grp3.erase(grp3.begin()+kj);
+	      --nmb;
+	    }
+	  else
+	    ++kj;
+	}
+    }
+}
+
+//===========================================================================
+// 
+// 
+void
+ftVolumeTools::closeModelParts(shared_ptr<SurfaceModel>& mod1,
+			       shared_ptr<SurfaceModel>& mod2,
+			       ftVolume *vol,
+			       shared_ptr<SurfaceModel>& close_mod, 
+			       int hist, double eps, int create_all)
+//===========================================================================
+{
+  int nmb = (!close_mod.get()) ? 0 : close_mod->nmbEntities();
+  for (int kj=0; kj<nmb; ++kj)
+    {
+      shared_ptr<ftSurface> face1 = close_mod->getFace(kj);
+      face1->setBody(vol);
+      if (face1->twin())
+	continue;
+      shared_ptr<ParamSurface> surf1 = close_mod->getSurface(kj);
+      shared_ptr<ParamSurface> surf2(surf1->clone());
+      surf2->swapParameterDirection();
+
+      shared_ptr<BoundedSurface> bd_surf1 = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf1);
+      if (bd_surf1.get())
+	surf1 = bd_surf1->underlyingSurface();
+      shared_ptr<BoundedSurface> bd_surf2 = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf2);
+      if (bd_surf2.get())
+	surf2 = bd_surf2->underlyingSurface();
+
+      // Make surface on volume surfaces
+      shared_ptr<ParamVolume> geomvol = vol->getVolume();
+      shared_ptr<ParamSurface> dummy;
+      if (surf1->instanceType() != Class_SurfaceOnVolume)
+	{
+	  shared_ptr<SurfaceOnVolume> vol_sf1 =
+	    shared_ptr<SurfaceOnVolume>(new SurfaceOnVolume(geomvol, dummy, 
+							    surf1, false));
+	  vol_sf1->setCreationHistory(1);  // Mark as internal splitting surface
+	  if (bd_surf1.get())
+	    {
+	      bd_surf1->replaceSurf(vol_sf1);
+	      surf1 = bd_surf1;
+	    }
+	  else
+	    surf1 = vol_sf1;
+	}
+      if (surf2->instanceType() != Class_SurfaceOnVolume)
+	{
+	  shared_ptr<SurfaceOnVolume> vol_sf2 =
+	    shared_ptr<SurfaceOnVolume>(new SurfaceOnVolume(geomvol, dummy, 
+							    surf2, false));
+	  vol_sf2->setCreationHistory(hist);
+	  if (bd_surf2.get())
+	    {
+	      bd_surf2->replaceSurf(vol_sf2);
+	      surf2 = bd_surf2;
+	    }
+	  else
+	    surf2 = vol_sf2;
+	}    
+
+#ifdef DEBUG_VOL
+      std::ofstream of("curr_face.g2");
+      surf2->writeStandardHeader(of);
+      surf2->write(of);
+#endif
+
+      shared_ptr<ftSurface> face1_2(new ftSurface(surf1, -1));
+      face1_2->setBody(vol);
+      mod1->append(face1_2, true, false, true);
+      shared_ptr<ftSurface> face2(new ftSurface(surf2, -1));
+      face2->setBody(vol);
+      mod2->append(face2, true, false, true);
+      int ix = mod2->getIndex(face2);
+      if (ix >= 0 && create_all == 3)
+	face1->connectTwin(face2.get(), eps);
+      int stop_break = 1;
     }
 }

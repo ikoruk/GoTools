@@ -110,6 +110,10 @@ int main(int argc, char* argv[] )
 	  shared_ptr<Body> body = fileread.readBody(infile.c_str());
 	  ftvol = shared_ptr<ftVolume>(new ftVolume(body));
 	}
+
+      // Try to simplify model
+     ftvol->getShell(0)->simplifyShell();
+
       tpTolerances top = ftvol->getTolerances();
       gap = top.gap;
       neighbour = top.neighbour;
@@ -147,6 +151,8 @@ int main(int argc, char* argv[] )
       bool isOK = sfmodel->checkShellTopology();
       std::cout << "Shell topology: " << isOK << std::endl;
 
+      // Try to simplify model
+      sfmodel->simplifyShell();
 
       ftvol = shared_ptr<ftVolume>(new ftVolume(sfmodel));
     }

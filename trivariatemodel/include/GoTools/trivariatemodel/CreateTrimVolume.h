@@ -78,7 +78,10 @@ namespace Go
     /// Destructor
     ~CreateTrimVolume();
 
-    /// Define the trimmed volume and fetch result
+    /// Define a rotational trimmed volume if possible and fetch result
+    shared_ptr<ftVolume> fetchRotationalTrimVol();
+ 
+   /// Define the trimmed volume and fetch result
     shared_ptr<ftVolume> fetchOneTrimVol();
 
   private:
@@ -136,7 +139,37 @@ namespace Go
 
     void analyzePrio(int* prio, int nmb_pri, 
 		     Point coord[], Point coord_pos[]);
+
+    bool 
+      identifyRotationalAxis(Point& centre, Point& axis, 
+			     Point& vec, double& angle,
+			     std::vector<shared_ptr<ftSurface> >& rotational_faces, 
+			     std::vector<shared_ptr<ftSurface> >& other_faces);
+
+    void
+      defineRotationalSurfaces(Point centre, Point axis,
+			       Point vec, double angle,
+			       std::vector<shared_ptr<ftSurface> >& rot_faces,
+			       double& rad1, double& rad2,
+			       std::vector<std::pair<shared_ptr<ftSurface>, 
+			       shared_ptr<ParamSurface> > >& side_sfs);
+    void
+      defineEndSurfaces(Point centre, Point axis, double rad,
+			std::vector<std::pair<shared_ptr<ftSurface>, 
+			shared_ptr<ParamSurface> > >& side_sfs);
+
+    void 
+      defineRotationalEndSurfaces(Point centre, Point axis, 
+				  Point vec, double angle,
+				  double rad1, double rad2,
+				  std::vector<std::pair<shared_ptr<ftSurface>, 
+				  shared_ptr<ParamSurface> > >& side_sfs);
+  void
+  orientSurfaces(Point centre, Point axis, Point vec, double angle,
+		 std::vector<shared_ptr<SplineSurface> >& sfs);
+
   };
+
 } // namespace Go
 
 

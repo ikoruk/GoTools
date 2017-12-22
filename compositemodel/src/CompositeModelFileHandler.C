@@ -45,6 +45,7 @@
 #include "GoTools/geometry/Line.h"
 #include "GoTools/geometry/Cone.h"
 #include "GoTools/geometry/Circle.h"
+#include "GoTools/geometry/Ellipse.h"
 #include "GoTools/geometry/Sphere.h"
 #include "GoTools/geometry/Torus.h"
 
@@ -1361,6 +1362,10 @@ void CompositeModelFileHandler::readFaces(const char* filein)
     else if (obj_header.classType() == Class_Circle)
     {
         geom_obj = shared_ptr<Circle>(new Circle());
+    }
+    else if (obj_header.classType() == Class_Ellipse)
+    {
+        geom_obj = shared_ptr<Ellipse>(new Ellipse());
     }
     else if (obj_header.classType() == Class_SplineSurface)
     {

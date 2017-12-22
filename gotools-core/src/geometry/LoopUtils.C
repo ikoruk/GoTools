@@ -305,6 +305,9 @@ LoopUtils::firstLoopInsideSecond(const vector<shared_ptr<CurveOnSurface> >& firs
 
    ALWAYS_ERROR_IF(pcv.get() == 0, "Unable to convert curve to SplineCurve");
    vector<double>::const_iterator iter = pcv->basis().begin();
+   int nmb_coefs = pcv->numCoefs();
+   nmb_coefs = nmb_coefs/2;
+   iter += nmb_coefs;
    while (iter[0] == iter[1]) {
        ++iter;
    }

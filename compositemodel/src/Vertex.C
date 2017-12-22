@@ -831,8 +831,25 @@ namespace Go
 	  break;
 
       if (ki < edges.size())
-	param = edges[ki]->faceParameter(edges[ki]->parAtVertex(this));
+	{
+	  param = edges[ki]->faceParameter(edges[ki]->parAtVertex(this));
 
+	  // Test
+	  Point pos1 = face->point(param[0],param[1]);
+	  double dd1 = pos1.dist(vertex_point_);
+	  
+	  double upar, vpar, dd2;
+	  Point clo;
+	  double eps = 1.0e-8;
+	  face->closestPoint(vertex_point_, upar, vpar, clo, dd2, eps, NULL,
+			     param.begin());
+	  if (dd2 < dd1)
+	    {
+	      param[0] = upar;
+	      param[1] = vpar;
+	    }
+	}
+	
       return param;
     }
 

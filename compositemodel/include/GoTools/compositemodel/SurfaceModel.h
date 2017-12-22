@@ -842,6 +842,13 @@ class GO_API SurfaceModel : public CompositeModel
   /// If the set has more than 4 corners, no surface will be produced
   shared_ptr<SplineSurface> approxFaceSet(double& error, int degree=3);
 
+  /// Approximate surface set with a spline surface and bound it according
+  /// to the boundaries of the surface set
+  shared_ptr<ParamSurface> representAsOneSurface(double& dist, int degree=3);
+
+  /// Inside test, uses normal direction for open shell
+  bool isInside(const Point& pnt, double& dist);
+
   /// Debug. Check topology
   bool checkShellTopology();
 
@@ -906,8 +913,6 @@ class GO_API SurfaceModel : public CompositeModel
 			  std::vector<shared_ptr<ftSurface> >& curr_set,
 			  std::vector<shared_ptr<ftSurface> >& all_sets) const;
 
-  bool isInside(const Point& pnt, double& dist);
-
   bool isInside(const Point& pnt, const Point& normal, double& dist);
 
   void makeCoonsBdCvs(vector<shared_ptr<ParamCurve> >& cvs1,
@@ -915,7 +920,7 @@ class GO_API SurfaceModel : public CompositeModel
 		      vector<shared_ptr<ParamCurve> >& cvs2);
 
   // Find candidate faces to be merged for simplifyShell
-  bool
+  int
     mergeSituation(ftSurface* face1, int& dir1, double& val1, bool& atstart1,
 		   ftSurface* face2, int& dir2, double& val2, bool& atstart2,
 		   pair<Point, Point>& co_par1, pair<Point, Point>& co_par2);

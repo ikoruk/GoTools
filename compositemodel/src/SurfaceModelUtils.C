@@ -39,6 +39,8 @@
 #include "GoTools/compositemodel/SurfaceModelUtils.h"
 #include "GoTools/compositemodel/ftSurface.h"
 #include "GoTools/compositemodel/CompositeCurve.h"
+#include "GoTools/compositemodel/ftPointSet.h"
+#include "GoTools/compositemodel/AdaptSurface.h"
 #include "GoTools/intersections/Identity.h"
 #include "GoTools/geometry/BoundedSurface.h"
 #include "GoTools/geometry/BoundedUtils.h"
@@ -63,7 +65,7 @@
 
 #include <fstream>
 
-//#define DEBUG
+#define DEBUG
 
 using std::vector;
 using std::pair;
@@ -536,7 +538,7 @@ SurfaceModelUtils::extendedUnderlyingSurface(vector<shared_ptr<ftSurface> >& sf_
 	{
 	  double len1 = fabs((loc1-loc2)*dir1);
 	  if (len1 > tol)
-	    continue;   // Not the same surfac
+	    continue;   // Not the same surface
 
 	  Cylinder *cyl1 = dynamic_cast<Cylinder*>(elem1);
 	  Cylinder *cyl2 = dynamic_cast<Cylinder*>(elem2);
@@ -1452,9 +1454,15 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 				       vector<shared_ptr<ParamSurface> >& sfs2,
 				       vector<bool>& at_bd2,
 				       Body *model2, double eps, double angtol,
-				       vector<vector<pair<shared_ptr<ParamSurface>, int> > >& groups)
+				       vector<vector<pair<shared_ptr<ParamSurface>, int> > >& groups,
+				       SurfaceModel *shell1, 
+				       SurfaceModel *shell2)
 //===========================================================================
 {
+  if ((model1 == NULL && shell1 == NULL) ||
+      (model2 == NULL && shell2 == NULL))
+    return;   // Not possible to sort trimmed surfaces
+
   // Make trimmed surfaces and sort trimmed and non-trimmed surface according
   // to whether they are inside or outside the other surface model
   // Sequence: from first group and inside model2, from first group and outside model2,
@@ -1486,15 +1494,17 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	    }
 #endif
 
-	  double pt_dist, ang;
- 	  bool inside = model2->isInside(pnt, pt_dist, ang);
+	  double pt_dist, ang=0.0;
+ 	  bool inside = (model2 != NULL) ? 
+	    model2->isInside(pnt, pt_dist, ang) : 
+	    shell2->isInside(pnt, pt_dist);
 	  shared_ptr<ParamSurface> tmp_surf = 
 	    shared_ptr<ParamSurface>(sfs1[ki]->clone());
 	  if (inside)
 	    {
 	      groups[0].push_back(make_pair(tmp_surf, ki));
 	      // 17102017 A missing symmetry regarding surfaces
-	      // coindident with the input model boundaries needs to
+	      // coincident with the input model boundaries needs to
 	      // be resolved or verified
 	      if (fabs(pt_dist) < eps && M_PI-ang < angtol)
 		groups[1].push_back(make_pair(shared_ptr<ParamSurface>(tmp_surf->clone()), ki));
@@ -1508,12 +1518,16 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	}
       else
 	{
-	  // Make trimmed surfaces
 	  vector<shared_ptr<BoundedSurface> > trim_sfs;
 	  shared_ptr<BoundedSurface> bd_sf1 = 
 	    dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs1[ki]);
 	  if (bd_sf1.get())
 	    {
+	      // First check size of underlying domain, large domains may
+	      // make the intersections unstable
+	      reduceUnderlyingSurface(bd_sf1, cvs1[ki]);
+
+	      // Make trimmed surfaces
 	      try {
 		trim_sfs = 
 		  BoundedUtils::splitWithTrimSegments(bd_sf1, cvs1[ki], eps);
@@ -1535,6 +1549,10 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 // 		std::cout << "Surface not valid: " << state << std::endl;
 #endif
 
+	      // // First check size of underlying domain
+	      // vector<shared_ptr<CurveOnSurface> > dummy_vec;
+	      // reduceUnderlyingSurface(trim_sfs[kr], dummy_vec);
+
 	      // Check if the trimmed surface lies inside or outside the 
 	      // other surface model.
 	      double u, v;
@@ -1546,8 +1564,10 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	      trim_sfs[kr]->write(of1);
 #endif
 
-	      double pt_dist, ang;
-	      bool inside = model2->isInside(pnt, pt_dist, ang);
+	      double pt_dist, ang=0.0;
+	      bool inside = (model2 != NULL) ? 
+		model2->isInside(pnt, pt_dist, ang) : 
+		shell2->isInside(pnt, pt_dist);
 	      if (inside)
 		{
 		  groups[0].push_back(make_pair(trim_sfs[kr], ki));
@@ -1570,7 +1590,7 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
   
   for (size_t ki=0; ki<cvs2.size(); ki++)
     {
-      if (cvs2[ki].size() == 0)
+     if (cvs2[ki].size() == 0)
 	{
 	  // The surface is not involved in any intersections. Check if
 	  // it lies inside or outside the other surface model
@@ -1595,8 +1615,10 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	    }
 #endif
 
-	  double pt_dist, ang;
-	  bool inside = model1->isInside(pnt, pt_dist, ang);
+	  double pt_dist, ang=0.0;
+ 	  bool inside = (model1 != NULL) ? 
+	    model1->isInside(pnt, pt_dist, ang) : 
+	    shell1->isInside(pnt, pt_dist);
 	  shared_ptr<ParamSurface> tmp_surf = 
 	    shared_ptr<ParamSurface>(sfs2[ki]->clone());
 	  if (inside)
@@ -1623,6 +1645,10 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	    dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs2[ki]);
 	  if (bd_sf2.get())
 	    {
+	      // First check size of underlying domain, large domains may
+	      // make the intersections unstable
+	      reduceUnderlyingSurface(bd_sf2, cvs2[ki]);
+
 	      try {
 		trim_sfs = 
 		  BoundedUtils::splitWithTrimSegments(bd_sf2, cvs2[ki], eps);
@@ -1644,6 +1670,10 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 // 		std::cout << "Surface not valid: " << state << std::endl;
 #endif
 
+	      // // First check size of underlying domain
+	      // vector<shared_ptr<CurveOnSurface> > dummy_vec;
+	      // reduceUnderlyingSurface(trim_sfs[kr], dummy_vec);
+
 	  // Check if the trimmed surface lies inside or outside the 
 	  // other surface model.
 	      double u, v;
@@ -1655,8 +1685,10 @@ SurfaceModelUtils::sortTrimmedSurfaces(vector<vector<shared_ptr<CurveOnSurface> 
 	      trim_sfs[kr]->write(of1);
 #endif
 
-	      double pt_dist, ang;
-	      bool inside = model1->isInside(pnt, pt_dist, ang);
+	      double pt_dist, ang=0.0;
+	      bool inside = (model1 != NULL) ? 
+		model1->isInside(pnt, pt_dist, ang) : 
+		shell1->isInside(pnt, pt_dist);
 	      if (inside)
 		{
 		  groups[2].push_back(make_pair(trim_sfs[kr], ki));
@@ -1909,7 +1941,7 @@ SurfaceModelUtils::extremalPoint(shared_ptr<ParamSurface>& surface,
     {
       // The surface was trimmed
       // Remove extremal points which are outside the domain
-      for (ki=0; ki<(int)curr_pnt.size(); ++ki)
+      for (ki=0; ki<(int)curr_pnt.size();)
 	{
 	  Vector2D param(curr_par[2*ki], curr_par[2*ki+1]);
 	  if (!bddomain->isInDomain(param, epsge))
@@ -1917,6 +1949,8 @@ SurfaceModelUtils::extremalPoint(shared_ptr<ParamSurface>& surface,
 	      curr_pnt.erase(curr_pnt.begin()+ki);
 	      curr_par.erase(curr_par.begin()+2*ki, curr_par.begin()+2*(ki+1));
 	    }
+	  else
+	    ++ki;
 	}
     }
   if (curr_pnt.size() > 0)
@@ -1990,14 +2024,14 @@ SurfaceModelUtils::extremalPoint(shared_ptr<ParamSurface>& surface,
 	  // be handled more than once
 	  for (int kj=0; kj<3; ++kj)
 	    {
-	      Point node_ext(nodes+triang_idx[ki+kj], 
-			     nodes+triang_idx[ki+kj]+3, false);
+	      Point node_ext(nodes+3*triang_idx[ki+kj], 
+			     nodes+3*triang_idx[ki+kj]+3, false);
 	      if (ext_pnt.dimension() == 0 || node_ext*dir > ext_pnt*dir)
 		{
 		  modified = true;
 		  ext_pnt = node_ext;
-		  ext_par[0] = par_nodes[2*ki];
-		  ext_par[1] = par_nodes[2*ki+1];
+		  ext_par[0] = par_nodes[2*triang_idx[ki+kj]];
+		  ext_par[1] = par_nodes[2*triang_idx[ki+kj]+1];
 		}
 	    }
 	}
@@ -2098,3 +2132,104 @@ void SurfaceModelUtils::tesselateOneSrf(shared_ptr<ParamSurface> surf,
       }
   }
 
+//===========================================================================
+void SurfaceModelUtils::triangulateFaces(vector<shared_ptr<ftSurface> >& faces,
+					 shared_ptr<ftPointSet>& triang,
+					 double tol)
+//===========================================================================
+{
+  vector<pair<int, int> > pnt_range;
+  int nmb_pnt = 0;
+  int nmb_sample = 40;
+  vector<shared_ptr<ftSurface> > faces2;
+  for (size_t ki=0; ki<faces.size(); ++ki)
+    {
+      shared_ptr<ftSurface> curr_face = faces[ki];
+      shared_ptr<ParamSurface> surf = curr_face->surface();
+      shared_ptr<ftPointSet> local_triang = shared_ptr<ftPointSet>(new ftPointSet());
+      vector<int> local_corner;
+      RectDomain dom = surf->containingDomain();
+      AdaptSurface::createTriangulation(surf, dom, local_triang, local_corner,
+					false, nmb_sample);
+      triang->append(local_triang);
+
+      // Handle common boundaries
+      // First find pairs of faces meeting at a common boundary
+      vector<ftSurface*> neighbours;
+      curr_face->getAdjacentFaces(neighbours);
+      for (size_t kj=0; kj<neighbours.size(); ++kj)
+	{
+	  // Check if this face is meshed already
+	  size_t kr;
+	  for (kr=0; kr<faces2.size(); ++kr)
+	    if (faces2[kr].get() == neighbours[kj])
+	      {
+		// A common boundary is found
+		triang->markLocalBoundary(faces2[kr], pnt_range[kr].first, 
+					  pnt_range[kr].second, curr_face,
+					  nmb_pnt, triang->size(), tol);
+	      }
+	}
+      // Set range information
+      faces2.push_back(curr_face);
+      pnt_range.push_back(make_pair(nmb_pnt, triang->size()));
+      nmb_pnt = triang->size();
+    }
+
+#ifdef DEBUG
+  std::ofstream of0("triang.g2");
+  triang->write(of0);
+  std::ofstream pointsout("pointsdump.g2");
+  vector<Vector3D> bd_nodes;
+  vector<Vector3D> inner_nodes;
+  int k2;
+  for (k2=0; k2<(int)triang->size(); ++k2)
+    {
+      if ((*triang)[k2]->isOnBoundary())
+	bd_nodes.push_back((*triang)[k2]->getPoint());
+      else
+	inner_nodes.push_back((*triang)[k2]->getPoint());
+    }
+		
+  pointsout << "400 1 0 4 255 0 0 255" << std::endl;
+  pointsout << bd_nodes.size() << std::endl;
+  for (k2=0; k2<(int)bd_nodes.size(); ++k2)
+    pointsout << bd_nodes[k2][0] << " " << bd_nodes[k2][1] << " " << bd_nodes[k2][2] << std::endl;
+  pointsout << "400 1 0 4 0 255 0 255" << std::endl;
+  pointsout << inner_nodes.size() << std::endl;
+  for (k2=0; k2<(int)inner_nodes.size(); ++k2)
+    pointsout << inner_nodes[k2][0] << " " << inner_nodes[k2][1] << " " << inner_nodes[k2][2] << std::endl;
+#endif
+
+}
+
+//===========================================================================
+void 
+SurfaceModelUtils::reduceUnderlyingSurface(shared_ptr<BoundedSurface>& bd_sf,
+					   vector<shared_ptr<CurveOnSurface> >& cvs)
+//===========================================================================
+{
+  double domainfac = 10.0;
+  double redfac = 0.1;
+
+  // Check if the domain size should be reduced
+  RectDomain dom1 = bd_sf->containingDomain();
+  RectDomain dom2 = bd_sf->underlyingSurface()->containingDomain();
+  double ll1 = dom1.diagLength();
+  double ll2 = dom2.diagLength();
+  if (ll2 > domainfac*ll1)
+    {
+      double u1 = std::max(dom1.umin()-redfac*ll1, dom2.umin());
+      double u2 = std::min(dom1.umax()+redfac*ll1, dom2.umax());
+      double v1 = std::max(dom1.vmin()-redfac*ll1, dom2.vmin());
+      double v2 = std::min(dom1.vmax()+redfac*ll1, dom2.vmax());
+      vector<shared_ptr<ParamSurface> > sub =
+	bd_sf->underlyingSurface()->subSurfaces(u1, v1, u2, v2);
+      if (sub.size() == 1)
+	{
+	  bd_sf->replaceSurf(sub[0]);
+	  for (size_t kr=0; kr<cvs.size(); ++kr)
+	    cvs[kr]->setUnderlyingSurface(sub[0]);
+	}
+    }
+}	  

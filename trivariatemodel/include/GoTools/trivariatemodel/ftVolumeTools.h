@@ -99,6 +99,11 @@ namespace Go
 		   shared_ptr<ftSurface>& face, double eps,
 		   int create_all = 3);
 
+    std::vector<shared_ptr<ftVolume> >
+      splitWithSplitSf(ftVolume* vol, shared_ptr<ParamSurface> surf,
+			std::vector<ftEdge*> edges,
+			double eps, int create_models);
+
     /// Specific functionality. Used from ftVolume::generateMissingBdSurf
     bool updateWithSplitFaces(shared_ptr<SurfaceModel> shell,
 			      shared_ptr<ftSurface>& face1,
@@ -142,6 +147,22 @@ namespace Go
 			       double tol, double eps,
 			       std::vector<shared_ptr<CurveOnSurface> >& int_cvs1,
 			       std::vector<shared_ptr<CurveOnSurface> >& int_cvs2);
+
+    void removeCoincFaces(shared_ptr<SurfaceModel>& mod1,
+			  shared_ptr<SurfaceModel>& mod2,
+			  shared_ptr<SurfaceModel>& mod3,
+			  double tol);
+
+    void removeCoincSurfs(std::vector<std::pair<shared_ptr<ParamSurface>,int> >& grp1,
+			  std::vector<std::pair<shared_ptr<ParamSurface>,int> >& grp2,
+			  std::vector<std::pair<shared_ptr<ParamSurface>,int> >& grp3,
+			  double tol);
+
+    void closeModelParts(shared_ptr<SurfaceModel>& mod1,
+			 shared_ptr<SurfaceModel>& mod2,
+			 ftVolume *vol,
+			 shared_ptr<SurfaceModel>& close_mod, 
+			 int hist, double eps, int create_all);
 
   }  // namespace ftVolumeTools
 } // namespace Go

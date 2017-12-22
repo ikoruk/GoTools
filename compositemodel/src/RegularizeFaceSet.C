@@ -52,7 +52,7 @@
 #include <fstream>
 #include <cstdlib>
 
-//#define DEBUG_REG
+#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -141,6 +141,11 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   int nmb_faces = (int)faces.size();
 
   tpTolerances tptol = model_->getTolerances();
+  double lim_coneangle = M_PI/3.0;
+
+  // Check if the model is rotational
+  Point centre, axis;
+  identifyRotationalModel(centre, axis);
 
 #ifdef DEBUG_REG
   std::ofstream ofpre("pre_reg2.g2");
@@ -457,6 +462,19 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
       
       // Share info about already regularized faces
       regularize.setTreated(reg_faces);
+
+      if (centre.dimension() == 3)
+	{
+	  // If the current face is roughly perpendicular to the
+	  // rotational axis, transfer this information
+	  DirectionCone cone = curr->surface()->normalCone();
+	  if (!cone.greaterThanPi() && cone.angle() < lim_coneangle)
+	    {
+	      double angle = axis.angle(cone.centre());
+	      if (std::min(angle, M_PI-angle) < 0.5*lim_coneangle)
+		regularize.setAxis(centre, axis);
+	    }
+	}
 
       vector<shared_ptr<ftSurface> > faces2 = 
 	regularize.getRegularFaces();
@@ -1991,8 +2009,8 @@ RegularizeFaceSet::mergeSituation(ftSurface* face,
   // 						       co_par2, dir1,
   // 						       dir2, val1, val2,
   // 						       angtol, false);
-  if (found_merge_cand == 0)
-    return found_merge_cand;  // No merge candiates are found 
+  if (found_merge_cand == 0 || other_vx.get() == NULL)
+    return 0;  // No merge candiates are found 
 
   // Fetch faces
 
@@ -3392,6 +3410,78 @@ RegularizeFaceSet::reRegularizeFaces(vector<shared_ptr<ftSurface> >& faces)
 	  
   faces = model_->allFaces();
   return (int)faces.size();
+}
+
+//==========================================================================
+void
+RegularizeFaceSet::identifyRotationalModel(Point& centre, Point& axis)
+//==========================================================================
+{
+  double eps = model_->getTolerances().neighbour;
+  double bend = model_->getTolerances().bend;
+
+  int nmb = model_->nmbEntities();
+  vector<Point> all_centre;
+  vector<Point> all_axis;
+  vector<int> nmb_axis;
+  for (int ki=0; ki<nmb; ++ki)
+    {
+      // Fetch surface/underlying surface
+      shared_ptr<ParamSurface> surf = model_->getSurface(ki);
+      shared_ptr<BoundedSurface> bd_surf = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(surf);
+      if (bd_surf.get())
+	surf = bd_surf->underlyingSurface();
+
+      Point curr_centre, curr_axis, vec;
+      double ang;
+      bool rotational = surf->isAxisRotational(curr_centre, curr_axis,
+					       vec, ang);
+      if (rotational)
+	{
+	  // Check if a new rotational axis is found
+	  curr_axis.normalize();
+	  size_t kj;
+	  for (kj=0; kj<all_centre.size(); ++kj)
+	    {
+	      Point vec2 = curr_centre - all_centre[kj];
+	      Point vec3 = vec2 - (vec2*curr_axis)*curr_axis;
+	      double dd = vec3.length();
+	      double angle = curr_axis.angle(all_axis[kj]);
+	      angle = std::min(angle, M_PI-angle);
+	      if (dd < eps && angle < bend)
+		{
+		  nmb_axis[kj]++;
+		  break;
+		}
+	    }
+	  if (kj == all_centre.size())
+	    {
+	      all_centre.push_back(curr_centre);
+	      all_axis.push_back(curr_axis);
+	      nmb_axis.push_back(1);
+	    }
+	}
+    }
+
+  // Check if there is one dominant rotational axis
+  int max_nmb = 0, nmb_max = 0, idx_max = -1;
+  for (size_t kj=0; kj<nmb_axis.size(); ++kj)
+    {
+      if (nmb_axis[kj] > max_nmb)
+	{
+	  max_nmb = nmb_axis[kj];
+	  nmb_max = 1;
+	  idx_max = (int)kj;
+	}
+      else if (nmb_axis[kj] == max_nmb)
+	nmb_max++;
+    }
+  if (nmb_max == 1 && idx_max >= 0)
+    {
+      centre = all_centre[idx_max];
+      axis = all_axis[idx_max];
+    }
 }
 
 }  // namespace Go

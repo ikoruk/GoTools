@@ -58,7 +58,7 @@
 #include <fstream>
 #include <cstdlib>
 
-//#define DEBUG_REG
+#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -200,11 +200,13 @@ vector<shared_ptr<ftSurface> > RegularizeFace::getRegularFaces()
 #endif
 
   int nmb_loops = face_->nmbBoundaryLoops();
+  bool regular = false;
   bool split_in_cand = (split_in_cand_ && top_level_);
   if (nmb_loops <= 1 && corners_.size() <= 4 &&
       !(cand_split_.size() > 1 && split_in_cand_))
     {
       sub_faces_.push_back(face_);
+      regular = true;
       // return;  // Less than 4 corners may be feasible
     }
   else
@@ -290,7 +292,8 @@ vector<shared_ptr<ftSurface> > RegularizeFace::getRegularFaces()
   // mess up the division
   if (top_level_)
     {
-      unsetAxis();  // Can do harm in this context
+      if (!regular)
+	unsetAxis();  // Can do harm in this context
       splitInTJoints();
 
       std::set<shared_ptr<Vertex> > all_vx2;  // All vertices in the model re  
@@ -1349,6 +1352,73 @@ void RegularizeFace::faceOneHole(vector<vector<ftEdge*> >& half_holes)
 }
 
 //==========================================================================
+void
+RegularizeFace::prioritizeCorrespondance(shared_ptr<Vertex> vx,
+					 vector<shared_ptr<Vertex> >& cand_vx,
+					 vector<shared_ptr<Vertex> >& prio_vx)
+//==========================================================================
+{
+  if (cand_split_.size() == 0 || cand_vx.size() == 0)
+    return;  // Nothing to do
+
+  // First compute matches
+  vector<shared_ptr<Vertex> > all_vx;
+  all_vx.push_back(vx);
+  all_vx.insert(all_vx.end(), cand_vx.begin(), cand_vx.end());
+  shared_ptr<Vertex> dummy;
+  pair<shared_ptr<Vertex>, int> dummy_match = make_pair(dummy, -1);
+  vector<pair<shared_ptr<Vertex>,int> > vx_match(all_vx.size(), dummy_match);
+  Point dir;   // Average direction between matching vertices
+  vector<Point> other_pos;
+  computeCorrMatches(face_, all_vx, vx_match, other_pos, dir);
+
+  if (!vx_match[0].first.get())
+    return;  // No match for the selected vertex
+
+  // Look for connections to the selected vertex in the corresponding faces
+  // that is not reflected in the current one
+  Body *bd = face_->getBody();
+  vector<ftEdge*> edges1 = vx->uniqueEdges(bd);
+  vector<ftEdge*> edges2 = vx_match[0].first->uniqueEdges(bd);
+  for (size_t ki=0; ki<edges2.size(); ++ki)
+    {
+      shared_ptr<Vertex> vx2 = edges2[ki]->getOtherVertex(vx_match[0].first.get());
+      size_t kj;
+      for (kj=1; kj<vx_match.size(); ++kj)
+	{
+	  if (vx_match[kj].first.get() == vx2.get())
+	    break;
+	}
+      if (kj < vx_match.size())
+	{
+	  size_t kr;
+	  for (kr=0; kr<edges1.size(); ++kr)
+	    {
+	      shared_ptr<Vertex> vx1 = edges1[kr]->getOtherVertex(vx.get());
+	      if (all_vx[kj].get() == vx1.get())
+		break;
+	    }
+	  if (kr == edges1.size())
+	    {
+	      // Connection not matched. Prioritize this vertex for
+	      // a connection
+	      size_t kh;
+	      for (kh=0; kh<cand_vx.size(); ++kh)
+		{
+		  if (all_vx[kj].get() == cand_vx[kh].get())
+		    break;
+		}
+	      if (kh < cand_vx.size())
+		{
+		  prio_vx.push_back(cand_vx[kh]);
+		  cand_vx.erase(cand_vx.begin()+kh);
+		}
+	    }
+	}
+    }
+}
+
+//==========================================================================
 vector<shared_ptr<ftSurface> > 
 RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
 			       vector<shared_ptr<Vertex> >& Tvx,
@@ -1370,60 +1440,14 @@ RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
   pair<shared_ptr<Vertex>, int> dummy_match = make_pair(dummy, -1);
   vector<pair<shared_ptr<Vertex>,int> > vx_match(vx.size(), dummy_match);
   Point dir;   // Average direction between matching vertices
-  int nmb_match = 0;
   vector<Point> other_pos;
-  size_t ki;
-  for (ki=0; ki<vx.size(); ++ki)
-    {
-      // Identify the vertex connected to the current T-joint vertex not
-      // lying in this face
-      vector<ftEdge*> edgs = vx[ki]->getNonFaceEdges(face.get());
-      if (edgs.size() == 1)
-	{
-	  // Check if the opposite edge vertex can be associated to a
-	  // the endpoint of a candidate splitting edge
-	  shared_ptr<Vertex> other = edgs[0]->getOtherVertex(vx[ki].get());
-
-	  // Find closest match point
-	  double min_dist = HUGE;
-	  int bd_type = -1;
-	  Point pt = other->getVertexPoint();
-	  for (size_t kj=0; kj<cand_split_.size(); ++kj)
-	    {
-	      double dist1 = pt.dist(cand_split_[kj].first.first);
-	      double dist2 = pt.dist(cand_split_[kj].second.first);
-	      if (dist1 < dist2 && dist1 < min_dist)
-		{
-		  min_dist = dist1;
-		  bd_type = cand_split_[kj].first.second;
-		}
-	      else if (dist2 < min_dist)
-		{
-		  min_dist = dist2;
-		  bd_type = cand_split_[kj].second.second;
-		}
-	    }
-	  if (min_dist < tol2_)
-	    {
-	      vx_match[ki] = make_pair(other, bd_type);
-	      other_pos.push_back(other->getVertexPoint());
-	      Point curr_dir = 
-		other->getVertexPoint() - vx[ki]->getVertexPoint();
-	      if (dir.dimension() == 0)
-		dir = curr_dir;
-	      else
-		dir += curr_dir;
-	      nmb_match++;
-	    }
-	}
-    }
-  if (nmb_match > 1)
-    dir /= (double)nmb_match;
+  computeCorrMatches(face, vx, vx_match, other_pos, dir);
 
   // Connect only if all T-vertices are connected either to vertex corresponding
   // to another T-vertex, to a vertex corresponding to a corner or the
   // corresponding vertices are connected to a common vertex
   // First check for corresponding vertices
+  size_t ki;
   for (ki=0; ki<Tvx.size(); ++ki)
     if (vx_match[ki].second < 0)
       break;
@@ -2492,6 +2516,13 @@ RegularizeFace::faceOuterBdFaces(vector<vector<ftEdge*> >& half_holes)
 		     }
 		 }
 	     }
+	 }
+
+       if (cand_split_.size() > 0)
+	 {
+	   // Check if any vertex should be prioritized to mimic the
+	   // connections in the opposite face
+	   prioritizeCorrespondance(split_vx, cand_vx, prio);
 	 }
 
        // for (size_t kr=0; kr<corners_.size(); ++kr)
@@ -9445,7 +9476,8 @@ RegularizeFace::connectToVertex(vector<shared_ptr<Vertex> >& concave_corners)
       int close_idx;
       double close_dist;
       Point close_par;
-      RegularizeUtils::getClosestBoundaryPar(face_, curr_vx, vx_cvs, vx_point, epsge_, 
+      RegularizeUtils::getClosestBoundaryPar(face_, curr_vx, vx_cvs, vx_point, 
+					     epsge_, angtol_,
 					     close_idx, close_dist, close_par);
       Point close_pt = face_->point(close_par[0], close_par[1]);
 
@@ -9620,6 +9652,7 @@ RegularizeFace::getTjointVertices(ftSurface *face)
     }
   return Tvx;
 }
+
 //==========================================================================
 void
 RegularizeFace::applyNextLevel(vector<shared_ptr<ftSurface> >& new_faces)
@@ -9695,6 +9728,66 @@ RegularizeFace::applyNextLevel(vector<shared_ptr<ftSurface> >& new_faces)
     }
 }
 
+//==========================================================================
+void
+RegularizeFace::computeCorrMatches(shared_ptr<ftSurface> face,
+				   vector<shared_ptr<Vertex> >& vx,
+				   vector<pair<shared_ptr<Vertex>,int> >& match,
+				   vector<Point>& other_pos, Point& dir)
+//==========================================================================
+{
+  if (cand_split_.size() == 0)
+    return;  // No correspondance info
+
+  size_t ki;
+  int nmb_match = 0;
+  for (ki=0; ki<vx.size(); ++ki)
+    {
+      // Identify the vertex connected to the current T-joint vertex not
+      // lying in this face
+      vector<ftEdge*> edgs = vx[ki]->getNonFaceEdges(face.get());
+      if (edgs.size() == 1)
+	{
+	  // Check if the opposite edge vertex can be associated to a
+	  // the endpoint of a candidate splitting edge
+	  shared_ptr<Vertex> other = edgs[0]->getOtherVertex(vx[ki].get());
+
+	  // Find closest match point
+	  double min_dist = HUGE;
+	  int bd_type = -1;
+	  Point pt = other->getVertexPoint();
+	  for (size_t kj=0; kj<cand_split_.size(); ++kj)
+	    {
+	      double dist1 = pt.dist(cand_split_[kj].first.first);
+	      double dist2 = pt.dist(cand_split_[kj].second.first);
+	      if (dist1 < dist2 && dist1 < min_dist)
+		{
+		  min_dist = dist1;
+		  bd_type = cand_split_[kj].first.second;
+		}
+	      else if (dist2 < min_dist)
+		{
+		  min_dist = dist2;
+		  bd_type = cand_split_[kj].second.second;
+		}
+	    }
+	  if (min_dist < tol2_)
+	    {
+	      match[ki] = make_pair(other, bd_type);
+	      other_pos.push_back(other->getVertexPoint());
+	      Point curr_dir = 
+		other->getVertexPoint() - vx[ki]->getVertexPoint();
+	      if (dir.dimension() == 0)
+		dir = curr_dir;
+	      else
+		dir += curr_dir;
+	      nmb_match++;
+	    }
+	}
+    }
+  if (nmb_match > 1)
+    dir /= (double)nmb_match;
+}
 
 }
 

@@ -56,7 +56,7 @@
 #include "GoTools/geometry/GoIntersections.h"
 #include <fstream>
 
-//#define DEBUG
+#define DEBUG
 
 using namespace Go;
 using std::vector;
@@ -3138,6 +3138,14 @@ bool BoundedSurface::simplifyBdLoops(double tol, double ang_tol, double& max_dis
       max_dist = std::max(max_dist, dist);
     }
 
+  if (modified)
+    {
+#ifdef DEBUG
+  std::ofstream of("simplified_bd.g2");
+  writeStandardHeader(of);
+  write(of);
+#endif
+    }
   return modified;
 }
 
@@ -3320,10 +3328,10 @@ void BoundedSurface::estimateSfSize(double& u_size, double& v_size, int u_nmb,
 	  double len = 0.0;
 	  for (size_t kj=0; kj<cvs.size(); ++kj)
 	    len += cvs[kj]->estimatedCurveLength();
-	  v_size += len;
+	  u_size += len;
 	  nmb++;
 	}
-      v_size /= (double)nmb;
+      u_size /= (double)nmb;
 
       nmb = 0;
        for (ki=0, u_par=dom.umin()+0.5*del_u; ki<u_nmb; ++ki, u_par+=del_u)
@@ -3339,10 +3347,10 @@ void BoundedSurface::estimateSfSize(double& u_size, double& v_size, int u_nmb,
 	  double len = 0.0;
 	  for (size_t kj=0; kj<cvs.size(); ++kj)
 	    len += cvs[kj]->estimatedCurveLength();
-	  u_size += len;
+	  v_size += len;
 	  nmb++;
 	}
-      u_size /= (double)nmb;
+      v_size /= (double)nmb;
 
       est_sf_size_u_ = u_size;
       est_sf_size_v_ = v_size;

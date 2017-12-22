@@ -565,6 +565,8 @@ namespace Go
 					   std::vector<shared_ptr<ParamCurve> >& bd_cvs,
 					   double tol, double tol2);
 
+   void mergeSmoothJoints(int degree);
+
    // This class inherits SurfaceOnVolume and overrules the point evaluator
    // to return the volume parameter value corresponding to a point on
    // the surface

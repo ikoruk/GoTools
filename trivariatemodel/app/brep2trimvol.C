@@ -114,7 +114,9 @@ int main(int argc, char* argv[] )
     }
   CreateTrimVolume trim(sfmodel, material_id);
 
-  shared_ptr<ftVolume> vol = trim.fetchOneTrimVol();
+  shared_ptr<ftVolume> vol = trim.fetchRotationalTrimVol();
+  if (!vol.get())
+    vol = trim.fetchOneTrimVol();
 
   VolumeModelFileHandler filehandler;
   filehandler.writeStart(outfile);

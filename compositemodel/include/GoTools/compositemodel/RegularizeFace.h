@@ -250,7 +250,12 @@ class RegularizeFace
 		    std::vector<shared_ptr<Vertex> >& Tvx,
 		    std::vector<shared_ptr<Vertex> >& corner);
 
-void faceWithHoles(std::vector<std::vector<ftEdge*> >& half_holes);
+  void
+    prioritizeCorrespondance(shared_ptr<Vertex> vx,
+			     std::vector<shared_ptr<Vertex> >& cand_vx,
+			     std::vector<shared_ptr<Vertex> >& prio_vx);
+
+  void faceWithHoles(std::vector<std::vector<ftEdge*> >& half_holes);
 
   void faceOneHole(std::vector<std::vector<ftEdge*> >& half_holes);
 
@@ -473,6 +478,11 @@ void faceWithHoles(std::vector<std::vector<ftEdge*> >& half_holes);
 
   void applyNextLevel(std::vector<shared_ptr<ftSurface> >& new_faces);
 
+  void
+    computeCorrMatches(shared_ptr<ftSurface> face,
+		       std::vector<shared_ptr<Vertex> >& vx,
+		       std::vector<std::pair<shared_ptr<Vertex>,int> >& match,
+		       std::vector<Point>& other_pos, Point& dir);
 };
 
 }  // namespace Go

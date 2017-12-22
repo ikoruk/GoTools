@@ -37,7 +37,7 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-//#define DEBUG_ADAPT
+#define DEBUG_ADAPT
 
 #include "GoTools/compositemodel/AdaptSurface.h"
 #include "GoTools/compositemodel/ftSmoothSurf.h"
@@ -999,8 +999,8 @@ namespace Go
     int min_samples = 1; //3;
     nmb_u = std::max(nmb_u, min_samples);
     nmb_v = std::max(nmb_v, min_samples);
-    nmb_u = std::min(nmb_u, min_samples*nmb_sample);
-    nmb_v = std::min(nmb_v, min_samples*nmb_sample);
+    nmb_u = std::min(nmb_u, 2*nmb_sample);
+    nmb_v = std::min(nmb_v, 2*nmb_sample);
 
     int nmb_cv = (cv_dir == 0) ? nmb_u : nmb_v;
     int nmb_pt = (pt_dir == 0) ? nmb_u : nmb_v;

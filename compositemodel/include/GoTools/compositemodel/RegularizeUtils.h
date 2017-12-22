@@ -91,7 +91,7 @@ namespace Go {
 			    shared_ptr<Vertex> vx,
 			    std::vector<shared_ptr<ParamCurve> >& vx_cvs,
 			    const Point& pnt,
-			    double epsge,
+			    double epsge, double angtol,
 			    int& close_idx, double& close_dist,
 			    Point& close_par, int loop_idx=-1);
 

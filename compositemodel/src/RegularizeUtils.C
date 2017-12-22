@@ -37,7 +37,7 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-//#define DEBUG_REG
+#define DEBUG_REG
 
 #include "GoTools/compositemodel/RegularizeUtils.h"
 #include "GoTools/compositemodel/Body.h"
@@ -133,8 +133,10 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
   Point vx_point = vx->getVertexPoint();
   Point vx_par = vx->getFacePar(face.get());
   double level_ang = M_PI/3; // M_PI/2.0; // M_PI/4.0; //M_PI/6.0;
+  Point axis2 = axis;
   Point centre2 = centre;
-  Point axis2;
+  if (centre.dimension() == 3 && axis2.dimension() == 3)
+    centre2 = centre - ((centre-vx_point)*axis)*axis;
 
   // Fetch adjacent vertices
   vector<shared_ptr<Vertex> > next_vxs = vx->getNextVertex(face.get());
@@ -257,8 +259,8 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
   double close_dist;
   Point close_par;
   getClosestBoundaryPar(face, vx, vx_cvs, vx_point, epsge, 
-			close_idx, close_dist, close_par, 
-			strong ? 0 : -1);
+			angtol, close_idx, close_dist, 
+			close_par, strong ? 0 : -1);
   Point close_pt = face->point(close_par[0], close_par[1]);
 
   // Turn off closest point index if the edge doesn't correspond
@@ -821,7 +823,7 @@ RegularizeUtils::getClosestBoundaryPar(shared_ptr<ftSurface> face,
 				       shared_ptr<Vertex> vx,
 				       vector<shared_ptr<ParamCurve> >& vx_cvs,
 				       const Point& pnt,
-				       double epsge,
+				       double epsge, double angtol,
 				       int& close_idx, double& close_dist,
 				       Point& close_par, int loop_idx)
 //==========================================================================
@@ -841,7 +843,22 @@ RegularizeUtils::getClosestBoundaryPar(shared_ptr<ftSurface> face,
     {
       shared_ptr<Vertex> next_vx = all_edg[kr]->getOtherVertex(vx.get());
       if (next_vx.get())
-	adj_pnt.push_back(next_vx->getVertexPoint());
+	{
+	  shared_ptr<Vertex> next_vx2;
+	  if (!next_vx->isCornerInFace(face.get(), angtol))
+	    {
+	      if (next_vx->nmbUniqueEdges() == 2)
+		{
+		  // Bypass this vertex
+		  vector<ftEdge*> edgs = next_vx->getFaceEdges(face.get());
+		  ftEdge* curr_edg = (edgs[0] == all_edg[kr].get()) ? 
+		    edgs[1] : edgs[0];
+		  next_vx2 = curr_edg->getOtherVertex(next_vx.get());
+		}
+	    }
+	  adj_pnt.push_back(next_vx2.get() ? next_vx2->getVertexPoint() :
+			    next_vx->getVertexPoint());
+	}
       shared_ptr<ParamCurve> tmp = all_edg[kr]->geomCurve();
       for (kh=0; kh<cvs.size(); ++kh)
 	if (cvs[kh].get() == tmp.get())
@@ -1129,10 +1146,15 @@ int
   Body *bd0 = face->getBody();
   for (kj=0; kj<vx_faces.size();)
     {
-      if (vx_faces[kj]->getBody() != bd0)
+      Body *bd1 = vx_faces[kj]->getBody();
+      if (/*bd0 != NULL && bd1 != NULL &&*/ bd1 != bd0)
 	vx_faces.erase(vx_faces.begin()+kj);
       else
-	kj++;
+	{
+	  // if (bd1 != NULL)
+	  //   bd0 = vx_faces[kj]->getBody();
+	  kj++;
+	}
     }
   // Check number of faces
   if (vx_faces.size() == 2)
@@ -1166,6 +1188,8 @@ int
 
       // Check configuration
       vx2 = edges[ki]->getOtherVertex(vx.get());
+      if (!vx2.get())
+	continue;
       vector<ftSurface*> vx_faces2 = vx2->faces();
 
       // Remove faces from other bodies

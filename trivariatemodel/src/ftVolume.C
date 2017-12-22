@@ -37,8 +37,8 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-//#define DEBUG_VOL1
-//#define DEBUG
+#define DEBUG_VOL1
+#define DEBUG
 
 #include "GoTools/trivariatemodel/ftVolume.h"
 #include "GoTools/trivariatemodel/ftVolumeTools.h"
@@ -66,9 +66,11 @@
 #include "GoTools/creators/HermiteAppC.h"
 #include "GoTools/creators/SmoothSurf.h"
 #include "GoTools/creators/CurveCreators.h"
+#include "GoTools/topology/FaceConnectivityUtils.h"
 #include <fstream>
 
 using std::vector;
+using std::set;
 using std::make_pair;
 using std::pair;
 using std::min;
@@ -1627,12 +1629,14 @@ void ftVolume::removeSliverFaces(double len_tol)
 			    shell->fetchAsSharedPtr(edg[ki]->twin()->face());
 			  shell->removeFace(face2);
 			}
+		      Body *bd = face->getBody();
 		      shell->removeFace(face);
 
 		      // Create and append modified faces
 		      for (size_t ki=0; ki<modified_sfs.size(); ++ki)
 			{
 			  shared_ptr<ftSurface> mod_face(new ftSurface(modified_sfs[ki], -1));
+			  mod_face->setBody(bd);
 			  shell->append(mod_face, false);
 			}
 #ifdef DEBUG_VOL1
@@ -1961,7 +1965,10 @@ int ftVolume::ElementOnBoundary(int elem_ix)
     }
 #endif
 
-  double eps = toptol_.gap;
+  // Can use a tolerance specifically suited for the intersections here
+  // as we do not want the exact intersection curve, but only an indication
+  // if it is any intersections
+  double eps = 1.0e-6; //toptol_.gap;
   for (size_t kj=0; kj<shells.size(); ++kj)
     {
       int nmb = shells[kj]->nmbEntities();
@@ -2197,7 +2204,7 @@ bool ftVolume::ParamInVolume(double u, double v, double w)
 bool ftVolume::regularizeBdShells(vector<pair<Point,Point> >& corr_vx_pts,
 				  vector<SurfaceModel*>& modified_adjacent,
 				  int split_mode, bool pattern_split,
-				  int level)
+				    int level)
 //===========================================================================
 {
   bool updated = false;
@@ -2224,17 +2231,22 @@ bool ftVolume::regularizeBdShells(vector<pair<Point,Point> >& corr_vx_pts,
 	mod << vxs[kr]->getVertexPoint() << std::endl;
 #endif
 
-      RegularizeFaceSet regularize(sfmodel, pattern_split, level);
+      RegularizeFaceSet regularize0(sfmodel, pattern_split, level);
       
       // Simplify if possible
+      int degree = 3;
       if (level == 0)
-	regularize.removeExtraDiv(true);
+	{
+	  regularize0.removeExtraDiv(true);
+	  mergeSmoothJoints(degree);
+	}
 
       // Fetch info about opposite surfaces
       vector<pair<int, int> > opposite = oppositeSfs(sfmodel);
 
       // Regularize shell
       int nmb_faces = sfmodel->nmbEntities();
+     RegularizeFaceSet regularize(sfmodel, pattern_split, level);
       regularize.setSplitMode(split_mode);
       size_t kj;
       for (kj=0; kj<opposite.size(); ++kj)
@@ -3298,17 +3310,77 @@ ftVolume::splitConcaveVol(int degree, bool isolate)
   shared_ptr<SurfaceModel> sfmodel = getShell(0);
   ModifyFaceSet splitmod(sfmodel);
 
-  // Check if a suitable splitting surface exists
-  shared_ptr<ParamSurface> split_sf = splitmod.getSplittingSurface();
+  // Check if a suitable splitting surfaces exist
+  vector<shared_ptr<ParamSurface> > split_sfs;
+  vector<vector<ftEdge*> > split_edgs;
+  vector<ftSurface*> corr_faces;
+  splitmod.getSplittingSurface(split_sfs, corr_faces, split_edgs);
 #ifdef DEBUG_VOL1
-  std::cout << "Split surface: " << split_sf.get() << std::endl;
+  std::cout << "Nmb split surfaces: " << split_sfs.size() << std::endl;
 #endif
-  if (split_sf.get())
+  if (split_sfs.size() > 0)
     {
       int create_models = (isolate) ? 4 : 3;  // Create both sides, 
+
+      // To avoid intersection problems with tangential connections to the
+      // splitting surface, add such edges to the already known intersections
+      // This involves a risk of missing intersections, but it is believed
+      // to be smaller than the risk of intersection problems
       // connect models if requested
-      reg_vols = ftVolumeTools::splitVolumes(this, split_sf, toptol_.gap, 
-					     create_models);
+      FaceConnectivityUtils<ftEdgeBase,ftSurface> connectivity;
+      vector<ftEdgeBase*> vec0;
+      vector<ftSurface*> faces0;
+      faces0.push_back(corr_faces[0]); 
+      connectivity.smoothEdges(faces0, vec0);
+     for (size_t kr=0; kr<vec0.size(); ++kr)
+	split_edgs[0].push_back(vec0[kr]->geomEdge());
+      
+      try {
+	vector<shared_ptr<ftVolume> > curr_vols =
+	  ftVolumeTools::splitWithSplitSf(this, split_sfs[0], split_edgs[0],
+					  toptol_.gap, create_models);
+	if (curr_vols.size() > 1)
+	  reg_vols.insert(reg_vols.end(), curr_vols.begin(), curr_vols.end());
+      }
+      catch (...)
+	{
+	  MESSAGE("Splitting surface division failed");
+	}
+
+      for (size_t ki=1; ki<split_sfs.size(); ++ki)
+	{
+	  size_t nmb_reg = reg_vols.size();
+	  for (size_t kj=0; kj<nmb_reg; )
+	    {
+	      // Add tangential connections to the list of already known
+	      // intersections
+	      vector<ftEdgeBase*> vec1;
+	      vector<ftSurface*> faces1;
+	      faces1.push_back(corr_faces[1]);
+	      connectivity.smoothEdges(faces1, vec1);
+	      for (size_t kr=0; kr<vec1.size(); ++kr)
+		split_edgs[kj].push_back(vec1[kr]->geomEdge());
+ 	      try {
+		vector<shared_ptr<ftVolume> > curr_vols =
+		  ftVolumeTools::splitWithSplitSf(reg_vols[kj].get(), 
+						  split_sfs[ki], split_edgs[ki], 
+						  toptol_.gap, create_models);
+		if (curr_vols.size() > 1)
+		  {
+		    reg_vols.insert(reg_vols.end(), curr_vols.begin(), 
+				    curr_vols.end());
+		    reg_vols.erase(reg_vols.begin()+kj);
+		    --nmb_reg;
+		  }
+		else
+		  ++kj;
+	      }
+	      catch (...)
+		{
+		  MESSAGE("Splitting surface division failed");
+		}
+	    }
+	}
       if (reg_vols.size() > 1)
 	{
 	  return reg_vols;
@@ -3660,7 +3732,8 @@ ftVolume::sortRegularSurfaces(vector<shared_ptr<ParamSurface> >& sorted_sfs,
 	  // this parameter direction
 	  int kj;
 	  for (kj=0; kj<4; ++kj)
-	    if (sorted_sfs[par_sfs[par][kj]].get() == deg_pts[ki].first.get())
+	    if (par < 3 &&
+		sorted_sfs[par_sfs[par][kj]].get() == deg_pts[ki].first.get())
 	      break;
 	  if (kj < 4)
 	    break;
@@ -3680,7 +3753,7 @@ ftVolume::sortRegularSurfaces(vector<shared_ptr<ParamSurface> >& sorted_sfs,
 	  int nmb_touch1 = 0, nmb_touch2 = 0;
 	  for (kj=0; kj<4; ++kj)
 	    {
-	      if (sorted_sfs[par_sfs[par][kj]].get())
+	      if (par < 3 && sorted_sfs[par_sfs[par][kj]].get())
 		{
 		  double upar, vpar, dd;
 		  Point clo_pt;
@@ -3721,7 +3794,7 @@ ftVolume::sortRegularSurfaces(vector<shared_ptr<ParamSurface> >& sorted_sfs,
 	      MESSAGE("ftVolume::sortRegularSurfaces. Unexpected degeneracy configuration");
 	      break;
 	    }
-	  if (nmb_sfs == 1 && nmb_touch1 == 1)
+	  if (par < 3 && nmb_sfs == 1 && nmb_touch1 == 1)
 	    {
 	      // Three empty slots to define. Identify the occupied one
 	      for (kj=0; kj<4; ++kj)
@@ -3752,7 +3825,7 @@ ftVolume::sortRegularSurfaces(vector<shared_ptr<ParamSurface> >& sorted_sfs,
 	      sfs.erase(sfs.begin()+std::min(deg,other));
 	      sfs_bd.erase(sfs_bd.begin()+std::min(deg,other));
 	    }
-	  else if (nmb_sfs == 2 && nmb_touch1 == 1)
+	  else if (par < 3 && nmb_sfs == 2 && nmb_touch1 == 1)
 	    {
 	      // Two empty slots to define. Identify the occupied ones
 	      int i1=-1, i2=-1;
@@ -9744,6 +9817,9 @@ shared_ptr<BoundedSurface> ftVolume::replaceBdCvs(shared_ptr<BoundedSurface> sur
   CurveLoop loop = surf->outerBoundaryLoop();
   shared_ptr<ParamSurface> under_sf = surf->underlyingSurface();
 
+  Point par_eps = SurfaceTools::getParEpsilon(*under_sf, tol);
+  double epspar = std::max(tol, 0.5*(par_eps[0]+par_eps[1]));
+
   vector<shared_ptr<ParamCurve> > loop_cvs = loop.getCurves();
   vector<shared_ptr<CurveOnSurface> > boundary_cvs;
 
@@ -9883,6 +9959,55 @@ shared_ptr<BoundedSurface> ftVolume::replaceBdCvs(shared_ptr<BoundedSurface> sur
     }
 #endif
 
+  // Split original loop curves if the endpoints of the modified
+  // boundary curves lies in the inner of a loop curve
+  for (size_t ki=0; ki<loop_cvs.size(); ++ki)
+    {
+      double t1 = loop_cvs[ki]->startparam();
+      double t2 = loop_cvs[ki]->endparam();
+      Point pt1 = loop_cvs[ki]->point(t1);
+      Point pt2 = loop_cvs[ki]->point(t2);
+      double par1, par2, dist1, dist2;
+      Point close1, close2;
+      loop_cvs[ki]->closestPoint(start_pos, t1, t2, par1, close1, dist1);
+      loop_cvs[ki]->closestPoint(end_pos, t1, t2, par2, close2, dist2);
+      
+      size_t ki2 = ki+1;
+      if (dist1 < tol && par1 > t1+epspar && par1 < t2-epspar &&
+	  pt1.dist(close1) > tol2 && pt2.dist(close1) > tol2)
+	{
+	  // Split
+	  vector<shared_ptr<ParamCurve> > subcvs = loop_cvs[ki]->split(par1);
+	  loop_cvs[ki] = subcvs[0];
+	  loop_cvs.insert(loop_cvs.begin()+ki+1, subcvs.begin()+1, subcvs.end());
+	  ki2 += (subcvs.size() - 1);
+	}
+      for (size_t kj=ki; kj<ki2; ++kj)
+	{
+	  double t3 = (kj > ki) ? loop_cvs[kj]->startparam() : t1;
+	  double t4 = (kj < ki2-1) ? loop_cvs[kj]->endparam() : t2;
+	  Point pt3 = (kj > ki) ? close1 : pt1;
+	  Point pt4 = (kj < ki2-1) ? close1 : pt2;
+	  if (dist2 < tol && par2 > t3+epspar && par2 < t4-epspar &&
+	      pt2.dist(close2) > tol2 && pt4.dist(close2) > tol2)
+	    {
+	      // Split
+	      vector<shared_ptr<ParamCurve> > subcvs = loop_cvs[kj]->split(par2);
+	      loop_cvs[kj] = subcvs[0];
+	      loop_cvs.insert(loop_cvs.begin()+kj+1, subcvs.begin()+1, subcvs.end());
+	    }
+	}
+    }
+
+#ifdef DEBUG
+  std::ofstream of4_2("loop_cvs_mod.g2");
+  for (size_t ki=0; ki<loop_cvs.size(); ++ki)
+    {
+      loop_cvs[ki]->geometryCurve()->writeStandardHeader(of4_2);
+      loop_cvs[ki]->geometryCurve()->write(of4_2);
+    }
+#endif
+
   while (true)
     {
       if (start_pos.dist(end_pos) < tol)
@@ -9907,78 +10032,80 @@ shared_ptr<BoundedSurface> ftVolume::replaceBdCvs(shared_ptr<BoundedSurface> sur
 	    }
 	  else if (std::min(std::min(d1,d2), std::min(d3,d4)) < tol)
 	    {
-	      // Check that the loop does not turn back on itself
 	      bool first_cv = (std::min(d1,d2) < std::min(d3,d4));
 	      bool turn = ((first_cv && d1 < d2) || ((!first_cv) && d4 < d3));
-	      Point pos;
-	      if (first_cv)
-		pos = turn ? pos2 : pos1;
-	      else
-		pos = turn ? pos1 : pos2;
+
+	      // Check that the loop does not turn back on itself
+	      // Test midpoint of curve
+	      double midpar = 0.5*(loop_cvs[ki]->startparam() + 
+				   loop_cvs[ki]->endparam());
+	      Point pos = loop_cvs[ki]->point(midpar);
 	      size_t ix;
+	      bool found = false;
 	      for (ix=0; ix<boundary_cvs.size(); ++ix)
 		{
 		  double par, dist;
 		  Point close;
 		  boundary_cvs[ix]->closestPoint(pos, boundary_cvs[ix]->startparam(),
-					      boundary_cvs[ix]->endparam(), par, close, dist);
+						 boundary_cvs[ix]->endparam(), par, 
+						 close, dist);
 		  if (dist < tol2)
 		    {
-		      double len = first_cv ? close.dist(end_pos) : close.dist(start_pos);
-		      // if (len > tol2)
-		      // 	break;
-		      // else
-			if (len > tol /*tol2*/)
-			{
-			  // Check for a better option
-			  bool found = false;
-			  for (size_t kj=ki+1; kj<loop_cvs.size(); ++kj)
-			    {
-			      Point pos3 = loop_cvs[kj]->point(loop_cvs[kj]->startparam());
-			      Point pos4 = loop_cvs[kj]->point(loop_cvs[kj]->endparam());
-			      double d1_2 = start_pos.dist(pos3);
-			      double d2_2 = start_pos.dist(pos4);
-			      double d3_2 = end_pos.dist(pos3);
-			      double d4_2 = end_pos.dist(pos4);
-			      if (std::min(std::min(d1_2,d2_2), std::min(d3_2,d4_2)) < tol)
-				{
-				  found = true;
+		      // double len = first_cv ? close.dist(end_pos) : close.dist(start_pos);
+		      // // if (len > tol2)
+		      // // 	break;
+		      // // else
+		      // 	if (len > tol /*tol2*/)
+		      // 	{
+		      // 	  // Check for a better option
+		      // 	  bool found = false;
+		      // 	  for (size_t kj=ki+1; kj<loop_cvs.size(); ++kj)
+		      // 	    {
+		      // 	      Point pos3 = loop_cvs[kj]->point(loop_cvs[kj]->startparam());
+		      // 	      Point pos4 = loop_cvs[kj]->point(loop_cvs[kj]->endparam());
+		      // 	      double d1_2 = start_pos.dist(pos3);
+		      // 	      double d2_2 = start_pos.dist(pos4);
+		      // 	      double d3_2 = end_pos.dist(pos3);
+		      // 	      double d4_2 = end_pos.dist(pos4);
+		      // 	      if (std::min(std::min(d1_2,d2_2), std::min(d3_2,d4_2)) < tol)
+		      // 		{
+		      // 		  found = true;
 
-				  // Check that the loop does not turn back on itself
-				  bool first_cv2 = (std::min(d1_2,d2_2) < std::min(d3_2,d4_2));
-				  bool turn2 = ((first_cv2 && d1_2 < d2_2) || 
-						((!first_cv2) && d4_2 < d3_2));
-				  Point pos5;
-				  if (first_cv2)
-				    pos5 = turn2 ? pos4 : pos3;
-				  else
-				    pos5 = turn2 ? pos3 : pos4;
-				  size_t ix2;
-				  for (ix2=0; ix2<boundary_cvs.size(); ++ix2)
-				    {
-				      double par2, dist2;
-				      Point close2;
-				      boundary_cvs[ix2]->closestPoint(pos5, 
-								      boundary_cvs[ix2]->startparam(),
-								      boundary_cvs[ix2]->endparam(), 
-								      par2, close2, dist2);
-				      if (dist2 < tol2)
-					{
-					  double len2 = first_cv2 ? close2.dist(end_pos) : 
-					    close2.dist(start_pos);
-					  if (len2 > tol)
-					    found = false;
-					}
-				    }
-				}
-			      if (found)
-				break;
-			    }
-			  if (found)
-			    break;
-			}
+		      // 		  // Check that the loop does not turn back on itself
+		      // 		  bool first_cv2 = (std::min(d1_2,d2_2) < std::min(d3_2,d4_2));
+		      // 		  bool turn2 = ((first_cv2 && d1_2 < d2_2) || 
+		      // 				((!first_cv2) && d4_2 < d3_2));
+		      // 		  Point pos5;
+		      // 		  if (first_cv2)
+		      // 		    pos5 = turn2 ? pos4 : pos3;
+		      // 		  else
+		      // 		    pos5 = turn2 ? pos3 : pos4;
+		      // 		  size_t ix2;
+		      // 		  for (ix2=0; ix2<boundary_cvs.size(); ++ix2)
+		      // 		    {
+		      // 		      double par2, dist2;
+		      // 		      Point close2;
+		      // 		      boundary_cvs[ix2]->closestPoint(pos5, 
+		      // 						      boundary_cvs[ix2]->startparam(),
+		      // 						      boundary_cvs[ix2]->endparam(), 
+		      // 						      par2, close2, dist2);
+		      // 		      if (dist2 < tol2)
+		      // 			{
+		      // 			  double len2 = first_cv2 ? close2.dist(end_pos) : 
+		      // 			    close2.dist(start_pos);
+		      // 			  if (len2 > tol)
+		      // 			    found = false;
+		      // 			}
+		      // 		    }
+		      // 		}
+		      // 	      if (found)
+		      // 		break;
+		      found = true;
 		    }
+		  if (found)
+		    break;
 		}
+
 	      if (ix < boundary_cvs.size())
 		{
 		  ++ki;
@@ -10231,6 +10358,136 @@ void ftVolume::simplifyOuterBdShell(int degree)
 {
   shared_ptr<SurfaceModel> model = shells_[0];  // Consider only outer shell
   SurfaceModelUtils::simplifySurfaceModel(model, degree);
+}
+
+
+
+//===========================================================================
+void ftVolume::mergeSmoothJoints(int degree)
+//===========================================================================
+{
+  shared_ptr<SurfaceModel> model = shells_[0];  // Consider only outer shell
+  Body *bd = model->getBody();
+
+  // Collect edges across which the continuity is g1
+  FaceConnectivityUtils<ftEdgeBase,ftSurface> connectivity;
+  vector<ftEdgeBase*> vec;
+  vector<shared_ptr<ftSurface> > faces = model->allFaces();
+  connectivity.smoothEdges(faces, vec);
+  
+  // Group connected edges
+  vector<int> grp_ix;
+  int ki, kj;
+  grp_ix.push_back(0);
+  for (ki=0; ki<(int)vec.size(); ki=grp_ix[grp_ix.size()-1])
+    {
+      grp_ix.push_back(ki+1);
+      ftEdge* edg1 = vec[ki]->geomEdge();
+      for (kj=ki+1; kj<(int)vec.size(); ++kj)
+	{
+	  ftEdge *edg2 = vec[kj]->geomEdge();
+	  if (edg1->commonVertex(edg2))
+	    {
+	      if (kj > grp_ix[grp_ix.size()-1])
+		std::swap(vec[grp_ix.size()-1], vec[kj]);
+	      grp_ix[grp_ix.size()-1]++;
+	    }
+	  else
+	    ++kj;
+	}
+    }
+  if (grp_ix[grp_ix.size()-1] < (int)vec.size())
+    grp_ix.push_back((int)vec.size());
+
+  // For each edge group, assemble adjacent faces
+  tpTolerances toptol = model->getTolerances();
+  double tol = model->getApproximationTol();
+  vector<set<shared_ptr<ParamSurface> > > all_sfs;
+  vector<set<shared_ptr<ftSurface> > > all_faces;
+  for (ki=1; ki<(int)grp_ix.size(); ++ki)
+    {
+      set<shared_ptr<ParamSurface> > curr_sfs;
+      set<shared_ptr<ftSurface> > curr_faces;
+      DirectionCone union_cone;
+      for (kj=grp_ix[ki-1]; kj<grp_ix[ki]; ++kj)
+	{
+	  vector<ftSurface*> adj_faces = vec[kj]->geomEdge()->getAdjacentFaces();
+	  for (size_t kr=0; kr<adj_faces.size(); ++kr)
+	    {
+	      int ix = model->getIndex(adj_faces[kr]);
+	      shared_ptr<ParamSurface> adj = model->getSurface(ix);
+	      DirectionCone cone = adj->normalCone();
+	      if (union_cone.dimension() == 0)
+		union_cone = cone;
+	      else
+		union_cone.addUnionWith(cone);
+	      curr_faces.insert(model->getFace(ix));
+	      curr_sfs.insert(adj);
+	    }
+	}
+      if (!union_cone.greaterThanPi())
+	{
+	  all_sfs.push_back(curr_sfs);
+	  all_faces.push_back(curr_faces);
+	}
+    }
+
+  // Check if the face groups overlap
+  for (ki=0; ki<(int)all_faces.size(); ++ki)
+    {
+      for (auto it=all_faces[ki].begin(); it!=all_faces[ki].end(); ++it)
+	{
+	  for (kj=ki+1; kj<(int)all_faces.size(); )
+	    {
+	      if (all_faces[kj].find(*it) != all_faces[kj].end())
+		{
+		  all_faces[ki].insert(all_faces[kj].begin(), all_faces[kj].end());
+		  all_faces.erase(all_faces.begin()+kj);
+		  all_sfs[ki].insert(all_sfs[kj].begin(), all_sfs[kj].end());
+		  all_sfs.erase(all_sfs.begin()+kj);
+		}
+	      else
+		++kj;
+	    }
+	  if (ki == (int)all_faces.size()-1)
+	    break;
+	}
+    }
+  
+  for (ki=0; ki<(int)all_sfs.size(); ++ki)
+    {
+      vector<shared_ptr<ParamSurface> > grp_sfs(all_sfs[ki].begin(), 
+						all_sfs[ki].end());
+      vector<shared_ptr<ftSurface> > grp_faces(all_faces[ki].begin(), 
+					       all_faces[ki].end());
+
+      shared_ptr<SurfaceModel> grp_model(new SurfaceModel(tol, toptol.gap, 
+							  toptol.neighbour,
+							  toptol.kink, toptol.bend,
+							  grp_sfs));
+
+#ifdef DEBUG
+      std::ofstream of("grp_sfs.g2");
+      for (size_t kr=0; kr<grp_sfs.size(); ++kr)
+	{
+	  grp_sfs[kr]->writeStandardHeader(of);
+	  grp_sfs[kr]->write(of);
+	}
+#endif
+      double dist;
+      shared_ptr<ParamSurface> approx_surf = grp_model->representAsOneSurface(dist);
+      if (approx_surf.get())
+	{
+	  // Replace surface
+	  shared_ptr<ftSurface> new_face(new ftSurface(approx_surf,-1));
+	  (void)new_face->createInitialEdges(toptol.gap, toptol.kink);
+	  for (size_t kr=0; kr<grp_faces.size(); ++kr)
+	    model->removeFace(grp_faces[kr]);
+	  new_face->setBody(bd);
+	  model->append(new_face);
+	}
+    }
+     int stop_break = 1;
 }
 
 

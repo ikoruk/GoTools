@@ -66,6 +66,8 @@
 
 #include "GoTools/geometry/GapRemoval.h"
 
+//#define DEBUG
+
 using std::vector;
 using std::set;
 using std::make_pair;
@@ -812,9 +814,17 @@ ftSurface::getUntrimmed(double gap, double neighbour, double angtol, bool only_c
 
   // For each parameter direction, approximate the curves in the same
   // or refined spline space
-  vector<shared_ptr<SplineCurve> > bd_cvs;
+  vector<shared_ptr<SplineCurve> > bd_cvs(4);
   for (int ki=0; ki<2; ++ki)
-    getApproxCurves(cvs.begin()+2*ki, 2, bd_cvs, gap);
+    {
+      vector<pair<shared_ptr<ParamCurve>,shared_ptr<ParamCurve> > > tmp_in(2);
+      vector<shared_ptr<SplineCurve> > tmp_out;
+      tmp_in[0] = cvs[ki];
+      tmp_in[1] = cvs[ki+2];
+      getApproxCurves(tmp_in.begin(), 2, tmp_out, gap);
+      bd_cvs[ki] = tmp_out[0];
+      bd_cvs[ki+2] = tmp_out[1];
+    }
 
 #ifdef DEBUG
   std::ofstream of3("approx_cvs.g2");
@@ -831,7 +841,7 @@ ftSurface::getUntrimmed(double gap, double neighbour, double angtol, bool only_c
     {
       Point pt2 = bd_cvs[ki]->ParamCurve::point(bd_cvs[ki]->startparam());
       Point pt3 = bd_cvs[ki]->ParamCurve::point(bd_cvs[ki]->endparam());
-      if (pt1.dist(pt3) < pt1.dist(pt2))
+      if (pt1.dist(pt3) < pt1.dist(pt2) && pt1.dist(pt2) > gap)
 	bd_cvs[ki]->reverseParameterDirection();
       pt1 = bd_cvs[ki]->ParamCurve::point(bd_cvs[ki]->endparam());
     }

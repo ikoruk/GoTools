@@ -211,6 +211,8 @@ void
 		    std::vector<int>& perm);
 
  int reRegularizeFaces(std::vector<shared_ptr<ftSurface> >& faces);
+
+ void identifyRotationalModel(Point& centre, Point& axis);
 };
 
 }  // namespace Go

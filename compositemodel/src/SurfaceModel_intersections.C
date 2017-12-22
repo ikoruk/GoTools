@@ -36,7 +36,7 @@
  * This file may be used in accordance with the terms contained in a
  * written agreement between you and SINTEF ICT. 
  */
-//#define DEBUG
+#define DEBUG
 
 #include "GoTools/compositemodel/CellDivision.h"
 #include "GoTools/utils/Point.h"
@@ -838,6 +838,10 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	}
       else
 	{
+	  // Check if the domain size should be reduced
+	  SurfaceModelUtils::reduceUnderlyingSurface(bd_sfs1[ki], 
+						     all_int_cvs1[ki]);
+
 	  // Make bounded surfaces
 	  vector<shared_ptr<BoundedSurface> > trim_sfs;
 	  try {
@@ -861,7 +865,7 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 // 		std::cout << "Surface not valid: " << state << std::endl;
 #endif
 
-	      // Simplify if possible
+	      // Simplify if possible. 
 	      double max_dist;
 	      trim_sfs[kr]->simplifyBdLoops(eps, toptol_.kink, max_dist);
 
@@ -963,6 +967,10 @@ shared_ptr<SurfaceModel> SurfaceModel::trimWithPlane(const ftPlane& plane)
 	}
       else
 	{
+	  // Check if the domain size should be reduced
+	  SurfaceModelUtils::reduceUnderlyingSurface(bd_sfs2[ki], 
+						     all_int_cvs2[ki]);
+
 	  // Make bounded surfaces
 	  vector<shared_ptr<BoundedSurface> > trim_sfs;
 	  try {
@@ -2256,6 +2264,7 @@ SurfaceModel::extremalPoint(Point& dir, Point& ext_pnt, int& idx,
 
   highest_face_checked_ = 0;  // Keep track on the faces checked already
   idx = -1;                   // No candidate found so far
+  std::fill(face_checked_.begin(), face_checked_.end(), false);
   bool possible;
   for (int ki = 0; ki < celldiv_ -> numCells(); ++ki) 
     {

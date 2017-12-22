@@ -56,6 +56,7 @@ namespace Go
   class Body;
   class BoundedSurface;
   class CurveOnSurface;
+  class ftPointSet;
 
   namespace SurfaceModelUtils
   {
@@ -120,7 +121,8 @@ namespace Go
 			     std::vector<shared_ptr<ParamSurface> >& sfs2,
 			     std::vector<bool>& at_bd2,
 			     Body *model2, double eps, double angtol,
-			     std::vector<std::vector<std::pair<shared_ptr<ParamSurface>, int> > >& groups);
+			     std::vector<std::vector<std::pair<shared_ptr<ParamSurface>, int> > >& groups,
+			     SurfaceModel *shell1=NULL, SurfaceModel *shell2=0);
 
     /// Intersect surface with a line
     void
@@ -143,6 +145,13 @@ namespace Go
     void tesselateOneSrf(shared_ptr<ParamSurface> surf,
 			 shared_ptr<GeneralMesh>& mesh,
 			 double tol2d, int n=20, int m=20);
+
+    void triangulateFaces(std::vector<shared_ptr<ftSurface> >& faces,
+			  shared_ptr<ftPointSet>& triang, double tol);
+
+    void 
+      reduceUnderlyingSurface(shared_ptr<BoundedSurface>& bd_sf,
+			      std::vector<shared_ptr<CurveOnSurface> >& cvs);
 
   }
 }
