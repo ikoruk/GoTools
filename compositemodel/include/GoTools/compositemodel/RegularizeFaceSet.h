@@ -208,7 +208,7 @@ void
  void defineSplitVx(std::vector<shared_ptr<ftSurface> >& faces,
 		    std::vector<int>& allow_deg,
 		    std::vector<shared_ptr<ftSurface> >& other_face,
-		    std::vector<int>& perm);
+		    std::vector<int>& perm, bool& has_concavecorners);
 
  int reRegularizeFaces(std::vector<shared_ptr<ftSurface> >& faces);
 

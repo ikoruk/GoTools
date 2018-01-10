@@ -4695,7 +4695,7 @@ void SurfaceModel::simplifyShell()
       // Collect edges across which the continuity is g1
       FaceConnectivityUtils<ftEdgeBase,ftFaceBase> connectivity;
       vector<ftEdgeBase*> vec;
-      connectivity.smoothEdges(faces_, vec);
+      connectivity.smoothEdges(faces_, vec, toptol_.bend);
 
 #ifdef DEBUG_REG
       if (vec.size() > 0)
@@ -5145,19 +5145,26 @@ shared_ptr<ParamSurface> SurfaceModel::representAsOneSurface(double& dist,
 	      der2[1].normalize();
 	      der2[1] *= -1;
 	      
-	      double s = ((der2[0]*der1[1]-der1[0]*der1[1])*(der1[1]*der2[1]) -
-			  (der2[0]*der2[1] - der1[0]*der2[1])*(der1[1]*der1[1]))/
-		((der1[1]*der1[1])*(der2[1]*der2[1]) - (der1[1]*der2[1])*(der1[1]*der2[1]));
-	      Point pos = der2[0]+s*der2[1];
-
-	      // Compute distance
 	      int ix3 = (ix1 + 1)%(int)curves2.size();
-	      double tpar, dist;
-	      Point clo_pt;
-	      curves2[ix3]->closestPoint(pos, curves2[ix3]->startparam(),
-					 curves2[ix3]->endparam(), tpar,
-					 clo_pt, dist);
-	      dist2cv[ix3] = dist;
+	      double det = (der1[1]*der1[1])*(der2[1]*der2[1]) - 
+		(der1[1]*der2[1])*(der1[1]*der2[1]);
+	      if (det > 1.0e-8)
+		{
+		  double s = ((der2[0]*der1[1]-der1[0]*der1[1])*(der1[1]*der2[1]) -
+			      (der2[0]*der2[1] - der1[0]*der2[1])*(der1[1]*der1[1]))/det;
+
+		  Point pos = der2[0]+s*der2[1];
+
+		  // Compute distance
+		  double tpar, dist;
+		  Point clo_pt;
+		  curves2[ix3]->closestPoint(pos, curves2[ix3]->startparam(),
+					     curves2[ix3]->endparam(), tpar,
+					     clo_pt, dist);
+		  dist2cv[ix3] = dist;
+		}
+	      else
+		dist2cv[ix3] = HUGE;
 	    }
 
 	  // Identify a short curve with a small distance to the new
@@ -5181,6 +5188,7 @@ shared_ptr<ParamSurface> SurfaceModel::representAsOneSurface(double& dist,
 	{
 	  // Construct a curve bypassing the two curves meeting in the
 	  // first concave corner
+	  break; // Implementation missing. Avoid infinite loop
 	}
       else
 	{
@@ -5189,17 +5197,23 @@ shared_ptr<ParamSurface> SurfaceModel::representAsOneSurface(double& dist,
 	  shared_ptr<ParamCurve> prev = curves2[ix1];
 	  shared_ptr<ParamCurve> next = curves2[ix2];
 
-	  vector<Point> der1(2), der2(2);
-	  prev->point(der1, prev->endparam(), 1);
-	  next->point(der2, next->startparam(), 1);
+	  vector<Point> der1(3), der2(3);
+	  prev->point(der1, prev->endparam(), 2);
+	  next->point(der2, next->startparam(), 2);
 	  der1[1].normalize();
 	  der2[1].normalize();
 	  der2[1] *= -1;
+	  double d1len = der1[2].length();
+	  double d2len = der2[2].length();
 
 	  double s = ((der2[0]*der1[1]-der1[0]*der1[1])*(der1[1]*der2[1]) -
 		      (der2[0]*der2[1] - der1[0]*der2[1])*(der1[1]*der1[1]))/
 	    ((der1[1]*der1[1])*(der2[1]*der2[1]) - (der1[1]*der2[1])*(der1[1]*der2[1]));
-	  Point pos = der2[0]+s*der2[1];
+	  double t = ((der2[0]*der1[1]-der1[0]*der1[1]) + 
+		      s*(der1[1]*der2[1]))/(der1[1]*der1[1]);
+	  Point pos1 = der2[0]+s*der2[1];
+	  Point pos2 = der1[0]+t*der1[1];
+	  Point pos = (d1len*pos1 + d2len*pos2)/(d1len+d2len);
 #ifdef DEBUG
 	  std::ofstream of2("corner.g2");
 	  of2 << "400 1 0 4 255 0 0 255" << std::endl;
@@ -5353,9 +5367,13 @@ shared_ptr<ParamSurface> SurfaceModel::representAsOneSurface(double& dist,
 	  surf = init_surf;
 	}
       else
-	error = max_error2;
+	{
+	  error = max_error2;
+	  if (mean_error > approxtol_ || max_error2 > 10.0*approxtol_)
+	    surf.reset();  // Don't accept huge errors
+	}
     }
-  else
+  else 
     surf = init_surf;
 
   if (!surf.get())

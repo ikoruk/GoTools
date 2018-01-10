@@ -552,17 +552,17 @@ int ModifyFaceSet::divide()
 		  next_edge.erase(next_edge.begin()+kj);
 		  angle.erase(angle.begin()+kj);
 		  curr_edges.erase(curr_edges.begin()+kj);
+		  nmb++;
 		}
 	      else
 		{
 		  ++kj;
+		  nmb++;
 		  //finish = true;
 		}
 	    }
 	  else
 	    ++kj;
-	  
-	  nmb++;
 	}
 	  //	    }
 

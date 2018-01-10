@@ -184,7 +184,11 @@ class Vertex
     bool isBoundaryVertex() const;
 
     /// Check if this vertex and the other vertex belongs to the same edge
-    bool sameEdge(Vertex* other) const;
+    /// Given an intermediate vertex with a smooth connection where
+    /// the same two surface meet, the function can be told to
+    /// return true
+    bool sameEdge(Vertex* other, double angtol = 0.0,
+		  bool bypass_insignificant=false) const;
 
 
     /// Check if this vertex and the other vertex belongs to the same face
@@ -196,7 +200,11 @@ class Vertex
 
     /// Check if this vertex and the other vertex are connected to the same
     /// vertex
-    bool connectedToSameVertex(Vertex* other) const;
+    /// Given an intermediate vertex with a smooth connection where
+    /// the same two surface meet, the function can be told to
+    /// return true
+    bool connectedToSameVertex(Vertex* other, double angtol = 0.0,
+			       bool bypass_insignificant=false) const;
 
     /// Fetch the vertex connected (through an edge) to both this and
     /// the other vertex, if any
@@ -232,6 +240,9 @@ class Vertex
 
    /// Fetch the next vertices in the given face
     std::vector<shared_ptr<Vertex> > getNextVertex(ftSurface* face) const;
+
+   /// Fetch the next vertices in any face 
+    std::vector<shared_ptr<Vertex> > getNextVertex() const;
 
     /// Collect attached edges where the distance between the endpoints
     /// are larger than the specified tolerance or where the curves meet 

@@ -91,6 +91,10 @@ namespace Go
     std::vector<ftEdge*> edgeChainFace(ftSurface *face, shared_ptr<Vertex> vx1,
 				       shared_ptr<Vertex> vx2, 
 				       shared_ptr<Vertex> out_vx);
+
+    /// Identify the face common to a set of edges, if any
+    ftSurface* identifyCommonFace(std::vector<ftEdge*>& edgs);
+
 }  // namespace Path
 
 }  // namespace Go

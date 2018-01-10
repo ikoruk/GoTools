@@ -132,6 +132,11 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
   RectDomain dom = surf->containingDomain();
   Point vx_point = vx->getVertexPoint();
   Point vx_par = vx->getFacePar(face.get());
+
+  // Vertex positions may be inaccurate due to gaps in the model,
+  // adjust with surface information
+  adjustVertexPosition(surf, vx_point, vx_par, tol2);
+
   double level_ang = M_PI/3; // M_PI/2.0; // M_PI/4.0; //M_PI/6.0;
   Point axis2 = axis;
   Point centre2 = centre;
@@ -328,7 +333,9 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
 	{
 	  // Check the feasability of a stright curve in the
 	  // parameter domain
+	  Point pos2 = prio_vx[min_idx]->getVertexPoint();
 	  Point parval2 = prio_vx[min_idx]->getFacePar(face.get());
+	  adjustVertexPosition(surf, pos2, parval2, tol3);
 	  shared_ptr<ParamCurve> pcurve = checkStrightParCv(face, vx, prio_vx[min_idx], 
 							    epsge, bend);
 	  if (pcurve.get())
@@ -359,9 +366,9 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
 	  // Remove also segments going through an adjacent vertex
 	  if (trim_segments.size() > 0)
 	    {
-	      Point other_pt = prio_vx[min_idx]->getVertexPoint();
+	      //Point other_pt = prio_vx[min_idx]->getVertexPoint();
 	      checkTrimSeg(trim_segments, next_vxs, vx_point, 
-			   other_pt, tol3 /*epsge*/);
+			   pos2, tol3 /*epsge*/);
 	    }
 	}
       if (trim_segments.size() == 0)
@@ -428,7 +435,9 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
 	    {
 	      // Check the feasability of a stright curve in the
 	      // parameter domain
+	      Point pos2 = cand_vx[min_idx]->getVertexPoint();
 	      Point parval2 = cand_vx[min_idx]->getFacePar(face.get());
+	      adjustVertexPosition(surf, pos2, parval2, tol3);
 	      shared_ptr<ParamCurve> pcurve = checkStrightParCv(face, vx, cand_vx[min_idx], 
 								epsge, bend);
 	      if (pcurve.get())
@@ -451,9 +460,9 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
 	      // Remove also segments going through an adjacent vertex
 	      if (trim_segments.size() > 0)
 		{
-		  Point other_pt = cand_vx[min_idx]->getVertexPoint();
+		  //Point other_pt = cand_vx[min_idx]->getVertexPoint();
 		  checkTrimSeg(trim_segments, next_vxs, vx_point, 
-			       other_pt, tol3 /*epsge*/);
+			       pos2, tol3 /*epsge*/);
 		}
 	    }
 	  if (trim_segments.size() == 0 && min_idx >= 0)
@@ -3387,3 +3396,33 @@ void RegularizeUtils::getSourceCvs(vector<shared_ptr<ftEdge> >& all_edg,
     }
 }
 
+//==========================================================================
+void RegularizeUtils::adjustVertexPosition(shared_ptr<ParamSurface> surf, 
+					   Point& vx_pos, Point& vx_par,
+					   double tol)
+//==========================================================================
+{
+  // Fetch all surface corners
+  vector<pair<Point,Point> > corners;
+  surf->getCornerPoints(corners);
+
+  // Find closest surface corner
+  double min_dist = HUGE;
+  int min_ix = -1;
+  for (int ki=0; ki<(int)corners.size(); ++ki)
+    {
+      double dist = vx_pos.dist(corners[ki].first);
+      if (dist < min_dist)
+	{
+	  min_dist = dist;
+	  min_ix = ki;
+	}
+    }
+
+  if (min_dist < tol)
+    {
+      // Replace vertex position and parameter
+      vx_pos = corners[min_ix].first;
+      vx_par = corners[min_ix].second;
+    }
+}

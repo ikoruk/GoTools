@@ -1100,6 +1100,32 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
     if (!sfs2[kr].get())
       sfs2[kr] = faces[kr]->surface();
 
+  // Simplify boundary loops if possible
+  for (size_t ki=0; ki<sfs1.size(); ++ki)
+    {
+      shared_ptr<BoundedSurface> bd_sf = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs1[ki]);
+      if (bd_sf.get())
+	{
+	  double max_loop_dist;
+	  bool simplified = 
+	    bd_sf->simplifyBdLoops(toptol.gap, toptol.bend, max_loop_dist);
+	  int stop_break = 1;
+	}
+    }
+  for (size_t ki=0; ki<sfs2.size(); ++ki)
+    {
+      shared_ptr<BoundedSurface> bd_sf = 
+	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs2[ki]);
+      if (bd_sf.get())
+	{
+	  double max_loop_dist;
+	  bool simplified = 
+	    bd_sf->simplifyBdLoops(toptol.gap, toptol.bend, max_loop_dist);
+	  int stop_break = 1;
+	}
+    }
+
   // Number of element side surfaces
   int nmb_split1 = sfs1.size();
 
@@ -1194,13 +1220,13 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  if (bd_sf.get())
 	    {
 	      vol_sf = dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(bd_sf->underlyingSurface());
-	      // Simplify boundary loop if possible
-	      // Can use a large angular tolerance since the function checks
-	      // on the distance between original and modified curves
-	      double max_loop_dist;
-	      bool simplified = 
-	      	bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
-	      int stop_break = 1;
+	      // // Simplify boundary loop if possible
+	      // // Can use a large angular tolerance since the function checks
+	      // // on the distance between original and modified curves
+	      // double max_loop_dist;
+	      // bool simplified = 
+	      // 	bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
+	      // int stop_break = 1;
 	    }
 
 	  if (vol_sf.get() && vol_sf->atBoundary())
@@ -1215,8 +1241,11 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 		{
 		  bd_sf->getLoopCvInfo(nmb_loops, nmb_cvs, nmb_corners,
 				       min_cvlen, max_cvlen, toptol.bend);
-		  max_u = std::max(max_u, min_cvlen);
-		  max_v = std::max(max_v, min_cvlen);
+		  if (nmb_cvs > 2)
+		    {
+		      max_u = std::max(max_u, min_cvlen);
+		      max_v = std::max(max_v, min_cvlen);
+		    }
 		}
 	      if (/*nmb_cvs <= 4 &&*/ nmb_corners == nmb_cvs &&
 		  min_cvlen < len_tol && std::min(len_u, len_v) >= toptol.neighbour)
@@ -1234,7 +1263,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	      small_ix++;
 	    }
 	      
-	  double fac = 2.0;
+	  double fac = 5.0; //2.0;
 	  if (std::max(max_u,max_v) < fac*toptol.neighbour && 
 	      std::min(max_u,max_v) < toptol.neighbour && elem_face == false)
 	    min_len = std::min(min_len, std::min(len_u, len_v));
@@ -1335,13 +1364,13 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  if (bd_sf.get())
 	    {
 	      vol_sf = dynamic_pointer_cast<SurfaceOnVolume,ParamSurface>(bd_sf->underlyingSurface());
-	      // Simplify boundary loop if possible
-	      // Can use a large angular tolerance since the function checks
-	      // on the distance between original and modified curves
-	      double max_loop_dist;
-	      bool simplified = 
-	      	bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
-	      int stop_break = 1;
+	      // // Simplify boundary loop if possible
+	      // // Can use a large angular tolerance since the function checks
+	      // // on the distance between original and modified curves
+	      // double max_loop_dist;
+	      // bool simplified = 
+	      // 	bd_sf->simplifyBdLoops(toptol.gap, 2.0*toptol.bend, max_loop_dist);
+	      // int stop_break = 1;
 	    }
 
 	  if (vol_sf.get() && vol_sf->atBoundary())
@@ -1374,7 +1403,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	      small_ix++;
 	    }
 
-	  double fac = 2.0;
+	  double fac = 5.0; //2.0;
 	  if (std::max(max_u,max_v) < fac*toptol.neighbour && 
 	      std::min(max_u,max_v) < toptol.neighbour && elem_face == false)
 	    min_len = std::min(min_len, std::min(len_u, len_v));

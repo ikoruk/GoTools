@@ -225,6 +225,10 @@ namespace Go {
 			 shared_ptr<Vertex> vx,
 			 shared_ptr<Vertex>& cand_vx,
 			 double epsge, double tol2, double angtol);
+
+    void adjustVertexPosition(shared_ptr<ParamSurface> surf, 
+			      Point& vx_pos, Point& vx_par,
+			      double tol);
   }
 
 }  // namespace Go

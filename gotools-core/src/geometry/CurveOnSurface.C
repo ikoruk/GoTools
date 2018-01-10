@@ -1597,29 +1597,29 @@ bool CurveOnSurface::ensureParCrvExistence(double epsgeo,
       // along the seam.
       if (start.size() > 1)
       {
-	// // First look for equality of candidates
-	// for (size_t ki=1; ki<start.size(); )
-	//   {
-	//     if (start[0].dist(start[ki]) < 0.1*epspar)
-	//       start.erase(start.begin()+ki);
-	//     else
-	//       ++ki;
-	//   }
+	// First look for equality of candidates
+	int nmb_equal1 = 1;
+	for (size_t ki=1; ki<start.size(); ++ki)
+	  {
+	    if (start[0].dist(start[ki]) < 0.1*epspar)
+	      nmb_equal1++;
+	  }
 	// if (start.size() > 1)
-	  pickParamPoint(start, startparam(), epsgeo);//epspar);
+	pickParamPoint(start, startparam(), 
+		       (nmb_equal1 == (int)start.size()) ? 10.0*epsgeo : epsgeo);//epspar);
       }
       if (end.size() > 1)
       {
-	// // First look for equality of candidates
-	// for (size_t ki=1; ki<end.size(); )
-	//   {
-	//     if (end[0].dist(end[ki]) < 0.1*epspar)
-	//       end.erase(end.begin()+ki);
-	//     else
-	//       ++ki;
-	//   }
+	// First look for equality of candidates
+	int nmb_equal2 = 1;
+	for (size_t ki=1; ki<end.size(); ++ki)
+	  {
+	    if (end[0].dist(end[ki]) < 0.1*epspar)
+	      nmb_equal2++;
+	  }
 	// if (end.size() > 1)
-	  pickParamPoint(end, endparam(), epsgeo);//epspar);
+	  pickParamPoint(end, endparam(), 
+		       (nmb_equal2 == (int)end.size()) ? 10.0*epsgeo : epsgeo);//epspar);
       }
 
 #ifndef NDEBUG

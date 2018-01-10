@@ -679,7 +679,14 @@ namespace Go
 	  }
 	else
 	  {
-	    shared_ptr<ftEdge> e1 = edges[ki]->splitAtVertex(split_vx);
+	    shared_ptr<ftEdge> e1;
+	    try {
+	      e1 = edges[ki]->splitAtVertex(split_vx);
+	    }
+	    catch (...)
+	      {
+		continue; // No split performed
+	      }
 	    shared_ptr<Vertex> other_vx = e1->getOtherVertex(split_vx.get());
 	    if (other_vx.get() == v1.get())
 	      {

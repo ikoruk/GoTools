@@ -340,6 +340,9 @@ public:
     /// Fetch the closest vertex within a given distance, if any
     shared_ptr<Vertex> hasVertexPoint(const Point& pnt, double tol) const;
 
+    /// Check if this face is connected to a given vertex
+    bool hasVertex(Vertex *vx) const;
+
     /// Collect all pairs of surface and vertex points where distance is greater than a tolerance
     void getBadDistance(std::vector<std::pair<ftSurface*, shared_ptr<Vertex> > >& badPairs,
 			double tol);

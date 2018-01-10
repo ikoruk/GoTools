@@ -1373,7 +1373,6 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
 //       0.01*getParEps(min_loop_tol, under_sf.get()); // We may not trust pcv to repr space_cv.
     double knot_diff_tol =
       getParEps(min_loop_tol, under_sf.get()); // We may not trust pcv to repr space_cv.
-    knot_diff_tol = std::max(knot_diff_tol, DEFAULT_PARAMETER_EPSILON);
     for (ki = 0; ki < int(boundary_loops.size()); ++ki) {
       min_loop_tol = std::min(min_loop_tol, 1.5*boundary_loops[ki].getSpaceEpsilon());
       min_loop_tol = std::max(min_loop_tol, 
@@ -1389,12 +1388,18 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
 	    double cv_len = tmp_crv2->estimatedCurveLength();
 	    double t1 = tmp_crv2->startparam();
 	    double t2 = tmp_crv2->endparam();
-	    if (cv_len > t2 - t1 && cv_len > min_loop_tol) //&& t2 - t1 <= knot_diff_tol)
-	      tmp_crv2->setParameterInterval(t1, t1+cv_len);
+	    double tdel = t2 - t1;
+	    if (cv_len > tdel && cv_len > min_loop_tol) //&& t2 - t1 <= knot_diff_tol)
+	      {
+		tmp_crv2->setParameterInterval(t1, t1+cv_len);
+		tdel = cv_len;
+	      }
 	    tmp_crv2->ensureParCrvExistence(min_loop_tol);
 	    old_loop_cvs.push_back(tmp_crv2);
+	    knot_diff_tol = std::min(knot_diff_tol, 0.2*tdel);
 	  }
     }
+    knot_diff_tol = std::max(knot_diff_tol, DEFAULT_PARAMETER_EPSILON);
 
 #ifdef DEBUG1
     std::ofstream out0_1("old_loop_cvs1.g2");
@@ -1416,6 +1421,20 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
     Point par_eps = SurfaceTools::getParEpsilon(sf, min_loop_tol);
     epspar = std::max(min_loop_tol, 0.5*(par_eps[0]+par_eps[1]));
     epspar *= 10.0;
+
+    // Check part_bd_cvs agains old_loop_cvs
+    for (ki=0; ki<(int)old_loop_cvs.size(); ++ki)
+      for (kj=0; kj<(int)part_bd_cvs.size(); ++kj)
+	{
+	  int coincidence = checkCurveCoincidence(old_loop_cvs[ki], part_bd_cvs[kj], 
+						  min_loop_tol, false);
+	  if (coincidence)
+	    {
+	      // Coincidence. Remove last curve
+	      part_bd_cvs.erase(part_bd_cvs.begin() + kj);
+	      kj--;
+	    }
+	}
 
     // We run part_bd_cvs, splitting if they start/end in inner part of a cv in old_loop_cvs.
     if (last_split < 0)
@@ -1532,10 +1551,10 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
 	      loose_end2 = false;
 
 	    if (space_start_dist < min_loop_tol  &&
-		(start_t - knot_diff_tol > old_loop_cvs[kj]->startparam() &&
-		 start_t + knot_diff_tol < old_loop_cvs[kj]->endparam()/*||
+		((start_t - knot_diff_tol > old_loop_cvs[kj]->startparam() &&
+		  start_t + knot_diff_tol < old_loop_cvs[kj]->endparam()) ||
 		 (geom_start.dist(space_start_pt) > min_loop_tol &&
-		 geom_end.dist(space_start_pt) > min_loop_tol)*/))
+		  geom_end.dist(space_start_pt) > min_loop_tol)))
 	      {
 		vector<shared_ptr<ParamCurve> > sub_cvs = 
 		  old_loop_cvs[kj]->split(start_t);
@@ -1596,10 +1615,10 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
 		// ++kj;
 	    }
 	    if (space_end_dist < min_loop_tol &&
-		(end_t - knot_diff_tol > old_loop_cvs[kj]->startparam() &&
-		 end_t + knot_diff_tol < old_loop_cvs[kj]->endparam())/*||
+		((end_t - knot_diff_tol > old_loop_cvs[kj]->startparam() &&
+		 end_t + knot_diff_tol < old_loop_cvs[kj]->endparam())||
 		 (geom_start.dist(space_end_pt) > min_loop_tol &&
-		 geom_end.dist(space_end_pt) > min_loop_tol)*/)
+		  geom_end.dist(space_end_pt) > min_loop_tol)))
 	      {
 		vector<shared_ptr<ParamCurve> > sub_cvs = 
 		  old_loop_cvs[kj]->split(end_t);
@@ -1731,20 +1750,20 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
     // 	    }
     // 	}
 
-    // Check part_bd_cvs agains old_loop_cvs
+    // // Check part_bd_cvs agains old_loop_cvs
     
-    for (ki=0; ki<(int)old_loop_cvs.size(); ++ki)
-      for (kj=0; kj<(int)part_bd_cvs.size(); ++kj)
-	{
-	  int coincidence = checkCurveCoincidence(old_loop_cvs[ki], part_bd_cvs[kj], 
-						  min_loop_tol, false);
-	  if (coincidence)
-	    {
-	      // Coincidence. Remove last curve
-	      part_bd_cvs.erase(part_bd_cvs.begin() + kj);
-	      kj--;
-	    }
-	}
+    // for (ki=0; ki<(int)old_loop_cvs.size(); ++ki)
+    //   for (kj=0; kj<(int)part_bd_cvs.size(); ++kj)
+    // 	{
+    // 	  int coincidence = checkCurveCoincidence(old_loop_cvs[ki], part_bd_cvs[kj], 
+    // 						  min_loop_tol, false);
+    // 	  if (coincidence)
+    // 	    {
+    // 	      // Coincidence. Remove last curve
+    // 	      part_bd_cvs.erase(part_bd_cvs.begin() + kj);
+    // 	      kj--;
+    // 	    }
+    // 	}
 	    
 #ifdef DEBUG1
     std::ofstream out1("loop_cvs1.g2");
@@ -1860,13 +1879,26 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
 	    space_end_dist < 50.0*min_loop_tol && 
 	    par_end_dist < epspar /*&& part_ind >= 0*/)
 	  {
-	    if (space_end_dist < min_loop_tol + part_bd_gap ||
-		space_end_dist < 2.0*min_loop_tol)
+	    // Make an extra check to avoid bypassing short connecting curves
+	    double cv_len = (tmp_ind < 0) ? HUGE :
+	      tmp_vec[tmp_ind]->estimatedCurveLength();
+
+	    double cand_end_dist = HUGE;
+	    if (cv_len < 50.0*min_loop_tol)
+	      {
+		// Check endpoint of candidate curve
+		Point cand_end = 
+		  tmp_vec[tmp_ind]->ParamCurve::point(tmp_vec[tmp_ind]->endparam());
+		cand_end_dist = total_space_start_pt.dist(cand_end);
+	      }
+	    if ((space_end_dist < min_loop_tol + part_bd_gap ||
+		space_end_dist < 2.0*min_loop_tol) && 
+		cand_end_dist > space_end_dist)
 	      {
 		// Probably a closed loop despite a big gap
 		min_loop_tol2 = space_end_dist + a_tol;
 	      }
-	    else
+	    else if (cand_end_dist > space_end_dist)
 	      {
 		// Make a test run for the next curve
 		vector<shared_ptr<CurveOnSurface> > tmp_vec2;
@@ -1901,7 +1933,10 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
 	      {
 		// A new segment to the left of the first segment is found.
 		// Be careful not to join two loops in tangential cases
-		if (first_is_part_bd && prev_old_ind >= 0)
+		// Check also curve lengths
+		double len = tmp_vec[tmp_ind]->estimatedCurveLength();
+		if (first_is_part_bd && prev_old_ind >= 0 ||
+		    len < min_loop_tol2)
 		  part_ind = old_ind = -1;
 	      }
 	  }

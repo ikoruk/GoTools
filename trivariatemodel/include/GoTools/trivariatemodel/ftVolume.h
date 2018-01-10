@@ -444,6 +444,8 @@ namespace Go
 			    bool perform_step2, bool smooth_connections,
 			    bool& trimmed, int max_nmb = 4);
 
+    void organizeLoops(std::vector<std::vector<ftEdge*> >& loops);
+
     void makeSurfacePair(std::vector<ftEdge*>& loop,
 			 int degree,
 			 shared_ptr<ftSurface>& face1,

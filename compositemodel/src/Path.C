@@ -612,5 +612,47 @@ vector<ftEdge*> Path::edgeChainFace(ftSurface *face, shared_ptr<Vertex> vx1,
   return result;
 }
 
+//===========================================================================
+ftSurface* Path::identifyCommonFace(vector<ftEdge*>& edgs)
+//===========================================================================
+{
+  if (edgs.size() == 0)
+    return NULL;
+
+  vector<ftFaceBase*> faces;
+  faces.push_back(edgs[0]->face());
+  if (edgs[0]->twin())
+    faces.push_back(edgs[0]->twin()->face());
+
+  for (size_t kj=0; kj<faces.size(); )
+    {
+      if (faces[kj] == NULL)
+	faces.erase(faces.begin()+kj);
+      else
+	++kj;
+    }
+
+  if (faces.size() == NULL)
+    return NULL;
+
+  for (size_t ki=1; ki<edgs.size(); ++ki)
+    {
+      ftFaceBase *f1 = edgs[ki]->face();
+      ftFaceBase *f2 = (edgs[ki]->twin()) ? edgs[ki]->twin()->face() : NULL;
+
+      for (size_t kj=0; kj<faces.size(); )
+	{
+	  if (f1 == faces[kj] || f2 == faces[kj])
+	    ++kj;
+	  else
+	    faces.erase(faces.begin()+kj);
+	}
+
+      if (faces.size() == 0)
+	return NULL;
+    }
+
+  return faces[0]->asFtSurface();
+}
 
 }   // namespace Go

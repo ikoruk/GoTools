@@ -188,6 +188,9 @@ vector<shared_ptr<ftSurface> > RegularizeFace::getRegularFaces()
   // this is not handled currently
   corners_ = face_->getCornerVertices(bend_);
 
+  // Check configuration for obsolete corners
+  checkCornerConfig();
+
 #ifdef DEBUG_REG
   std::ofstream of("corners.g2");
   of << "400 1 0 4 155 100 0 255" << std::endl;
@@ -502,7 +505,7 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
 	{
 	  if (ka == ki)
 	    continue;
-	  if (Tvx[ki]->sameEdge(Tvx[ka].get()))
+	  if (Tvx[ki]->sameEdge(Tvx[ka].get(), 0.0))
 	    break;
 	}
 
@@ -570,6 +573,7 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
   	}
     }
 
+  bool strong = (allow_degen_ || corner.size() < 4);
   vector<shared_ptr<Vertex> > prio;
   if (allow_degen_)
     {
@@ -591,12 +595,14 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
 	  size_t kh;
 	  for (kh=0; kh<other_corners.size(); ++kh)
 	    {
-	      if (curr->sameEdge(other_corners[kh].get()))
+	      if (curr->sameEdge(other_corners[kh].get(), angtol_, true))
 		{
 		  level = 1;
 		  min_level = (int)kh;
 		}
-	      else if (level > 1 && curr->connectedToSameVertex(other_corners[kh].get()))
+	      else if (level > 1 && 
+		       curr->connectedToSameVertex(other_corners[kh].get(), 
+						   angtol_, true))
 		{
 		  level = 2;
 		  min_level = (int)kh;
@@ -614,7 +620,8 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
 		      if ((int)kr == min_level)
 			continue;
 		      bool same_edge = 
-			cand_vx[kh]->sameEdge(other_corners[kr].get());
+			cand_vx[kh]->sameEdge(other_corners[kr].get(), 
+					      angtol_, true);
 		      if (level == 1 && same_edge)
 			break;
 		      else if (level == 2 && same_edge)
@@ -623,7 +630,8 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
 			  break;
 			}
 		      else if (level == 2 &&
-			       cand_vx[kh]->connectedToSameVertex(other_corners[kr].get()))
+			       cand_vx[kh]->connectedToSameVertex(other_corners[kr].get(),
+								  angtol_, true))
 			first_found = (int)kr;
 		    }
 		  if (first_found >= 0 || kr < other_corners.size())
@@ -634,6 +642,8 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
 		  prio.push_back(cand_vx[kh]);
 		  cand_vx.erase(cand_vx.begin()+kh);
 		}
+	      else if ( corner.size() >= 4)
+		strong = false;
 	    }
 	}
     }
@@ -650,7 +660,7 @@ RegularizeFace::divideInTjoint(shared_ptr<ftSurface> face,
   faces = RegularizeUtils::divideVertex(face_, curr, cand_vx, cand_edge,
 					prio, epsge_, tol2_, angtol_, 
 					bend_, non_corner, centre_, axis_,
-					(allow_degen_ || corner.size() < 4));
+					strong);
   return faces;
 	    
 }
@@ -1463,8 +1473,9 @@ RegularizeFace::TjointCandSplit(shared_ptr<ftSurface> face,
       for (kj=ki+1; kj<vx_match.size(); ++kj)
 	{
 	  if (vx_match[kj].second >= 0 &&
-	      vx_match[ki].first->sameEdge(vx_match[kj].first.get()) &&
-	      (!vx[ki]->sameEdge(vx[kj].get())))
+	      vx_match[ki].first->sameEdge(vx_match[kj].first.get(), 
+					   angtol_, true) &&
+	      (!vx[ki]->sameEdge(vx[kj].get(), angtol_, true)))
 
 	  connect.push_back(std::make_pair(vx[ki], vx[kj]));
 	  // vx.erase(vx.begin()+std::max(ki,kj));
@@ -3060,53 +3071,110 @@ RegularizeFace::prioritizeCornerVx(vector<shared_ptr<Vertex> > cand_vx,
 	    corr_pts.push_back(make_pair(cand_split_[ki].second.first, 1));
 	}
 
+      // Assemble vertices in already treated faces
+      set<shared_ptr<Vertex> > corr_vx;
+      for (ki=0; ki<treated_faces_.size(); ++ki)
+	{
+	  vector<shared_ptr<Vertex> > tmp_vxs = 
+	    treated_faces_[ki]->vertices();
+	  corr_vx.insert(tmp_vxs.begin(), tmp_vxs.end());
+	}
+      vector<shared_ptr<Vertex> > corr_vx2(corr_vx.begin(), corr_vx.end());
+
       for (ki=0; ki<corr_pts.size(); ++ki)
 	{
 	  if (corr_pts[ki].second < 3)
 	    continue;   // Not a T-joint vertex
 
-	  // Fetch corresponding point in this face
-	  Point pos1;
-	  double u1, v1, d1;
-	  face_->closestPoint(corr_pts[ki].first, u1, v1, pos1, d1, epsge_);
-
-	  // Find closest candidate vertex
+	  // Check for a direct correspondance. Find vertex corresponding
+	  // to point
 	  double min_dist2 = min_dist;
-	  size_t min_ind = 0;
-	  for (kj=nmb_pri; kj<cand_vx2.size(); ++kj)
+	  int min_ind = -1;
+	  for (kj=0; kj<corr_vx2.size(); ++kj)
 	    {
-	      double dist = pos1.dist(cand_vx2[kj]->getVertexPoint());
+	      double dist = 
+		corr_vx2[kj]->getVertexPoint().dist(corr_pts[ki].first);
 	      if (dist < min_dist2)
 		{
 		  min_dist2 = dist;
-		  min_ind = kj;
+		  min_ind = (int)kj;
+		}
+	    }
+	  if (min_ind < 0)
+	    continue;
+
+	  for (kj=nmb_pri; kj<cand_vx2.size(); ++kj)
+	    {
+	      if (cand_vx2[kj]->sameEdge(corr_vx2[min_ind].get(), 
+					 angtol_, true))
+		{
+	  	  std::swap(cand_vx2[nmb_pri], cand_vx2[kj]);
+	  	  ++nmb_pri;
+		  break;
 		}
 	    }
 	  
-	  if (min_dist2 < level_dist)
-	    {
-	      // Check if a non-corner has a smaller distance
-	      for (kj=0; kj<non_corner.size(); ++kj)
-		{
-		  double dist = pos1.dist(non_corner[kj]->getVertexPoint());
-		  if (dist < min_dist2)
-		    break;
-		}
-	      if (kj == non_corner.size())
-		{
-		  std::swap(cand_vx2[nmb_pri], cand_vx2[min_ind]);
-		  ++nmb_pri;
-		}
-	    }
+	  // // Fetch corresponding point in this face
+	  // Point pos1;
+	  // double u1, v1, d1;
+	  // face_->closestPoint(corr_pts[ki].first, u1, v1, pos1, d1, epsge_);
+
+	  // // Find closest candidate vertex
+	  // double min_dist2 = min_dist;
+	  // size_t min_ind = 0;
+	  // for (kj=nmb_pri; kj<cand_vx2.size(); ++kj)
+	  //   {
+	  //     double dist = pos1.dist(cand_vx2[kj]->getVertexPoint());
+	  //     if (dist < min_dist2)
+	  // 	{
+	  // 	  min_dist2 = dist;
+	  // 	  min_ind = kj;
+	  // 	}
+	  //   }
+	  
+	  // if (min_dist2 < level_dist)
+	  //   {
+	  //     // Check if a non-corner has a smaller distance
+	  //     for (kj=0; kj<non_corner.size(); ++kj)
+	  // 	{
+	  // 	  double dist = pos1.dist(non_corner[kj]->getVertexPoint());
+	  // 	  if (dist < min_dist2)
+	  // 	    break;
+	  // 	}
+	  //     if (kj == non_corner.size())
+	  // 	{
+	  // 	  std::swap(cand_vx2[nmb_pri], cand_vx2[min_ind]);
+	  // 	  ++nmb_pri;
+	  // 	}
+	  //   }
 	}
       if (cand_vx2.size() == 0)
 	cand_vx2.insert(cand_vx2.end(), cand_vx.begin(), cand_vx.end());
     }
 
+  if (nmb_pri == 0 && cand_vx2.size() >= 4)
+    {
+      // Prioritize corners where one adjacent face is triangular
+      for (size_t ki=0; ki<cand_vx2.size(); ++ki)
+	{
+	  vector<ftSurface*> vx_faces = cand_vx2[ki]->faces(bd);
+	  for (size_t kj=0; kj<vx_faces.size(); ++kj)
+	    {
+	      int nmb_corners = vx_faces[kj]->nmbCornerVertices(bend_);
+	      if (nmb_corners == 3)
+		{
+		  std::swap(cand_vx2[nmb_pri], cand_vx2[ki]);
+		  ++nmb_pri;
+		  break;
+		}
+	    }
+	}
+    }
+
   if (nmb_pri == 0 && cand_vx2.size() == 5)
     {
       // Special case. Preferably a corner is joined to the
-      // interior of the oppisite edge
+      // interior of the opposite edge
       // Prioritize corners where the adjacent surface
       // to the opposite edge has not been regularized before
       // Prioritize also faces that have a corner where only two 
@@ -3990,7 +4058,7 @@ RegularizeFace::isolateHole(const Point& seg_pnt, shared_ptr<Vertex> vx,
       for (ki=0; ki<select_end.size(); )
 	{
 	  if (select_vx->sameEdge(select_end[ki].get()) ||
-	      select_vx->connectedToSameVertex(select_end[ki].get()))
+	      select_vx->connectedToSameVertex(select_end[ki].get(), 0.0))
 	    select_end.erase(select_end.begin()+ki);
 	  else
 	    ++ki;
@@ -4081,7 +4149,8 @@ RegularizeFace::selectCandidateSplit(shared_ptr<Vertex> select_vx,
 	  if (other->sameEdge(select_vx.get()) && !allow_degen_)
 	    break;
 
-	  if (select_vx->connectedToSameVertex(other.get()) && !allow_degen_)
+	  if (select_vx->connectedToSameVertex(other.get()) && 
+	      !allow_degen_)
 	    {
 	      if (other->nmbUniqueEdges() == 2)
 		{
@@ -7997,7 +8066,8 @@ RegularizeFace::fetchPatternSplit(const Point& corner,
       shared_ptr<Vertex> close2 = face_->getClosestVertex(pos2);
       double vx_d1 = close1->getVertexPoint().dist(pos1);
       double vx_d2 = close2->getVertexPoint().dist(pos2);
-      if (close1->sameEdge(close2.get()) && vx_d1 < fac*len && vx_d2 < fac*len)
+      if (close1->sameEdge(close2.get()) && 
+	  vx_d1 < fac*len && vx_d2 < fac*len)
 	  continue;  // Candidate split curve ends up in same edge
 
       if ((dist1 < fac*len || (dist1 < fac2*len && tmp_edge == edge1)) && 
@@ -9788,6 +9858,56 @@ RegularizeFace::computeCorrMatches(shared_ptr<ftSurface> face,
   if (nmb_match > 1)
     dir /= (double)nmb_match;
 }
+
+//==========================================================================
+void
+RegularizeFace::checkCornerConfig()
+//==========================================================================
+{
+  // Remove corners with a relatively small angle, where only two surfaces
+  // meet and where at least one of the adjacent edges is a gap edge.
+  // Relevant for models with gaps
+  size_t kr;
+  double angtol = 2.0*bend_;
+  Body *body = face_->getBody();
+  for (kr=0; kr<corners_.size(); )
+    {
+      // Check number of faces
+      vector<ftSurface*> faces = corners_[kr]->faces(body);
+      if (faces.size() != 2)
+	{
+	  ++kr;
+	  continue;
+	}
+
+      // Check angle
+      vector<ftEdge*> edgs = corners_[kr]->getEdges(face_.get());
+      if (edgs.size() != 2)
+	{
+	  ++kr;
+	  continue;
+	}
+
+      Point tan1 = edgs[0]->tangent(edgs[0]->parAtVertex(corners_[kr].get()));
+      Point tan2 = edgs[1]->tangent(edgs[1]->parAtVertex(corners_[kr].get()));
+      double ang = tan1.angle(tan2);
+      if (ang > angtol)
+	{
+	  ++kr;
+	  continue;
+	}
+
+      // Check edge status
+      int stat1 = edgs[0]->getConnectivityInfo()->WorstStatus();
+      int stat2 = edgs[1]->getConnectivityInfo()->WorstStatus();
+      if (stat1 >= 3 || stat2 >= 3)
+	corners_.erase(corners_.begin()+kr);
+      else
+	++kr;
+    }
+
+}
+
 
 }
 

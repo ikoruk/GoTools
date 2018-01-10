@@ -2173,6 +2173,17 @@ shared_ptr<Vertex> ftSurface::getClosestVertex(const Point& pnt) const
 }
 
 //===========================================================================
+  bool ftSurface::hasVertex(Vertex *vx) const
+//===========================================================================
+{
+  vector<shared_ptr<Vertex> > face_vx = vertices();
+  for (size_t ki=0; ki<face_vx.size(); ++ki)
+    if (face_vx[ki].get() == vx)
+      return true;
+  return false;
+}
+
+//===========================================================================
 void ftSurface::getBadDistance(vector<pair<ftSurface*, ftEdge*> >& badPairs,
 			       double tol) const
 //===========================================================================

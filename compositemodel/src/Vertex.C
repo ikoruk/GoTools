@@ -300,21 +300,44 @@ namespace Go
   }
 
   //===========================================================================
-  bool Vertex::sameEdge(Vertex* other) const
+  bool Vertex::sameEdge(Vertex* other, double angtol,
+			bool bypass_insignificant) const
   //===========================================================================
   {
     for (size_t ki=0; ki<edges_.size(); ++ki)
       {
-	shared_ptr<Vertex> vx = edges_[ki].first->getOtherVertex(other);
-	if (vx.get() == this)
+	shared_ptr<Vertex> vx = edges_[ki].first->getOtherVertex((Vertex*)this);
+	if (vx.get() == other)
 	  return true;
 
-	if (edges_[ki].second)
+	// if (edges_[ki].second)
+	//   {
+	//      shared_ptr<Vertex> vx2 = edges_[ki].second->getOtherVertex(other);
+	//      if (vx2.get() == this)
+	//        return true;
+	//   }
+
+	if (bypass_insignificant && vx->nmbUniqueEdges() == 2)
 	  {
-	     vx = edges_[ki].second->getOtherVertex(other);
-	     if (vx.get() == this)
-	       return true;
+	    vector<ftSurface*> faces = vx->faces();
+	    if (faces.size() == 2)
+	      {
+		// Check if the edges meet smoothly
+		vector<ftEdge*> edgs = vx->uniqueEdges();
+		Point tan1 = edgs[0]->tangent(edgs[0]->parAtVertex(vx.get()));
+		Point tan2 = edgs[1]->tangent(edgs[1]->parAtVertex(vx.get()));
+		double ang = tan1.angle(tan2);
+		if (ang < angtol || M_PI-ang<angtol)
+		  {
+		    // Don't know the orientation of the edges
+		    bool found = 
+		      vx->sameEdge(other, angtol, bypass_insignificant);
+		    if (found)
+		      return true;
+		  }
+	      }
 	  }
+
       }
     return false;
   }
@@ -368,15 +391,27 @@ namespace Go
   }
 
   //===========================================================================
-  bool Vertex::connectedToSameVertex(Vertex* other) const
+  bool Vertex::connectedToSameVertex(Vertex* other, double angtol,
+				     bool bypass_insignificant) const
   //===========================================================================
   {
     vector<ftEdge*> edges = other->uniqueEdges();
     for (size_t ki=0; ki<edges.size(); ++ki)
       {
 	shared_ptr<Vertex> vx = edges[ki]->getOtherVertex(other);
-	if (sameEdge(vx.get()))
+	if (sameEdge(vx.get(), angtol, bypass_insignificant))
 	  return true;
+     }
+
+    if (bypass_insignificant)
+      {
+	for (size_t ki=0; ki<edges_.size(); ++ki)
+	  {
+	    shared_ptr<Vertex> vx = 
+	      edges_[ki].first->getOtherVertex((Vertex*)this);
+	    if (other->sameEdge(vx.get(), angtol, bypass_insignificant))
+	      return true;	
+	  }
       }
     return false;
   }
@@ -558,6 +593,22 @@ namespace Go
       {
 	shared_ptr<Vertex> curr = edges[ki]->getOtherVertex(this);
 	vxs.push_back(curr);
+      }
+    return vxs;
+  }
+
+  //===========================================================================
+  vector<shared_ptr<Vertex> > Vertex::getNextVertex() const
+  //===========================================================================
+  {
+    vector<shared_ptr<Vertex> > vxs;
+    for (size_t ki=0; ki<edges_.size(); ++ki)
+      {
+	if (edges_[ki].first)
+	  {
+	    shared_ptr<Vertex> other = edges_[ki].first->getOtherVertex(this);
+	    vxs.push_back(other);
+	  }
       }
     return vxs;
   }
