@@ -62,7 +62,7 @@ class Vertex
 
     /// Constructor. Give the geometric position of the vertex and
     /// associated edges
-    Vertex(Point vertex_point, std::vector<ftEdge*> edges);
+    Vertex(Point vertex_point, std::vector<ftEdge*>& edges);
 
     /// Constructor. Give the geometric position of the vertex and
     /// one associated edge
@@ -94,6 +94,10 @@ class Vertex
 
     /// Returns all edges meeting in this vertex including twins
     std::vector<ftEdge*> allEdges() const;
+
+    /// Returns all edges meeting in this vertex belonging to a given body,
+    /// including twins
+    std::vector<ftEdge*> allEdges(Body *bd) const;
 
     /// Returns all geometrically unique edges meeting in this
     /// vertex. One edge is return for a pair of twins.

@@ -3420,7 +3420,7 @@ ftVolume::splitConcaveVol(int degree, bool isolate)
     {
       for (size_t ki=0; ki<bd_faces.size(); ++ki)
 	if (bd_faces[ki]->hasTwin())
-	  bd_faces[ki]->disconnectTwin();
+	  bd_faces[ki]->disconnectTwin(true);
 
       // Simplify sub models if possible
       for (size_t ki=0; ki<reg_vols.size(); ++ki)
