@@ -136,6 +136,8 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   void RegularizeFaceSet::divide(bool reverse_sequence)
 //==========================================================================
 {
+  std::cout << "Entering regularize face set, divide" << std::endl;
+
   // Divide the faces one by one. First collect all faces
   vector<shared_ptr<ftSurface> > faces = model_->allFaces();
   int nmb_faces = (int)faces.size();
@@ -146,6 +148,7 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   // Check if the model is rotational
   Point centre, axis;
   identifyRotationalModel(centre, axis);
+  std::cout << "After rotational matrix" << std::endl;
 
 #ifdef DEBUG_REG
   std::ofstream ofpre("pre_reg2.g2");
@@ -156,23 +159,24 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
       tmp->write(ofpre);
     }
 
-   // Check all vertices
-  vector<shared_ptr<Vertex> > curr_vx;
-  model_->getAllVertices(curr_vx);
-  for (size_t kf=0; kf<curr_vx.size(); ++kf)
-    if (!curr_vx[kf]->checkVertexTopology())
-      {
-	std::ofstream vx_of("error_vx.g2");
-	vx_of << "400 1 0 4 255 0 0 255 " << std::endl;
-	vx_of << "1" << std::endl;
-	vx_of << curr_vx[kf]->getVertexPoint() << std::endl;
-	std::cout << " Error in vertex topology " << std::endl;
-      }
+  //  // Check all vertices
+  // vector<shared_ptr<Vertex> > curr_vx;
+  // model_->getAllVertices(curr_vx);
+  // for (size_t kf=0; kf<curr_vx.size(); ++kf)
+  //   if (!curr_vx[kf]->checkVertexTopology())
+  //     {
+  // 	std::ofstream vx_of("error_vx.g2");
+  // 	vx_of << "400 1 0 4 255 0 0 255 " << std::endl;
+  // 	vx_of << "1" << std::endl;
+  // 	vx_of << curr_vx[kf]->getVertexPoint() << std::endl;
+  // 	std::cout << " Error in vertex topology " << std::endl;
+  //     }
 #endif
 
   // vector<shared_ptr<ftSurface> > remaining_faces;
   // remaining_faces.insert(remaining_faces.end(), faces.begin(), faces.end());
 
+    std::cout << "level" << std::endl;
   if (level_ > 0)
     {
       // Check if a tailored restructuring of specific surfaces
@@ -193,7 +197,10 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   
   // Set face correspondance
   //if (corr_faces_.size() == 0)
+    std::cout << "To compute face correspondance" << std::endl;
     computeFaceCorrespondance(faces);
+
+    std::cout << "Face correspondance computed" << std::endl;
 
   int kj;
   // vector<shared_ptr<ftSurface> > deg_faces;
@@ -279,6 +286,7 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   // Special case treatment providing prioritized vertices for split
   // Report also on concave corners which imply a slightly different
   // stragegy for block structuring of single faces
+  std::cout << "To define split vertices" << std::endl;
   bool has_concavecorners = false;
   defineSplitVx(faces, allow_deg, other_face, perm, has_concavecorners);
 #ifdef DEBUG_REG
@@ -1748,20 +1756,20 @@ void
 RegularizeFaceSet::removeInsignificantVertices(vector<shared_ptr<Vertex> >& vx)
 //==========================================================================
 {
+  Body *body = model_->getBody();
   for (size_t ki=0; ki<vx.size(); )
     {
       vector<ftEdge*> edges = vx[ki]->uniqueEdges();
 
-      // Sort edges with respect to associated body
+      // Remove edges not associated to the current body
       size_t kj, kr;
-      for (kj=0; kj<edges.size(); ++kj)
+      for (kj=0; kj<edges.size();)
 	{
-	  Body *body = edges[kj]->face()->asFtSurface()->getBody();
-	  for (kr=kj+1; kr<edges.size(); ++kr)
-	    {
-	      if (edges[kr]->face()->asFtSurface()->getBody() == body)
-		std::swap(edges[kj+1], edges[kr]);
-	    }
+	  Body *body2 = edges[kj]->face()->asFtSurface()->getBody();
+	  if (body2 != NULL && body != NULL && body2 != body)
+	    edges.erase(edges.begin()+kj);
+	  else 
+	    ++kj;
 	}
       
       bool non_sign = true;
@@ -1821,6 +1829,7 @@ RegularizeFaceSet::removeInsignificantVertices(vector<shared_ptr<Vertex> >& vx)
 	    {
 	      faces.insert(edges[kh]->face()->asFtSurface());
 	      if (edges[kh]->twin())
+		// Must check for existence and meaning
 		faces.insert(edges[kh]->twin()->geomEdge()->face()->asFtSurface());
 	    }
 	  if (faces.size() != 2)
