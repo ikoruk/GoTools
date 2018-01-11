@@ -457,8 +457,9 @@ public:
 		     std::vector<ftEdgeBase*> first2, 
 		     std::vector<int> forward);
 
-    /// Disconnect twin info. NB radial edge information is NOT removed
-    void disconnectTwin();
+    /// Disconnect twin info. 
+    /// Radial edge information is removed only if isolate is set
+    void disconnectTwin(bool isolate = false);
    
    /// Check if two faces are adjacent, and return information about
     /// the edge along which this acjacency ocurrs

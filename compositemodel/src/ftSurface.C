@@ -302,12 +302,66 @@ vector<shared_ptr<ftEdgeBase> > ftSurface::startEdges()
 
 
 //---------------------------------------------------------------------------
-  void ftSurface::disconnectTwin()
+  void ftSurface::disconnectTwin(bool isolate)
 //---------------------------------------------------------------------------
   {
+    ftSurface *twinface = NULL;
     if (twin_)
-      twin_->twin_ = NULL;
+      {
+	twinface = twin_->asFtSurface();
+	twin_->twin_ = NULL;
+      }
     twin_ = NULL;
+
+    if (isolate && twinface)
+      {
+	// Fetch edges
+	vector<shared_ptr<ftEdgeBase> > tmp_edges1, tmp_edges2;
+	tmp_edges1 = createInitialEdges();
+	tmp_edges2 = twinface->createInitialEdges();
+
+	size_t ki, kj;
+	for (ki=0; ki<tmp_edges1.size(); ++ki)
+	  {
+	    // Disconnect radial edge
+	    shared_ptr<EdgeVertex> radial_edge = 
+	      tmp_edges1[ki]->geomEdge()->getEdgeMultiplicityInstance();
+	    if (radial_edge.get())
+	      {
+		radial_edge->removeEdge(tmp_edges1[ki]->geomEdge());
+		tmp_edges1[ki]->geomEdge()->removeEdgeVertex();
+	      }
+	  }
+	for (ki=0; ki<tmp_edges2.size(); ++ki)
+	  {
+	    // Disconnect radial edge
+	    shared_ptr<EdgeVertex> radial_edge = 
+	      tmp_edges2[ki]->geomEdge()->getEdgeMultiplicityInstance();
+	    if (radial_edge.get())
+	      {
+		radial_edge->removeEdge(tmp_edges2[ki]->geomEdge());
+		tmp_edges2[ki]->geomEdge()->removeEdgeVertex();
+	      }
+	  }
+
+	// Disconnect vertices
+	vector<shared_ptr<Vertex> > vx = vertices();
+	Body *body = getBody();
+	for (ki=0; ki<vx.size(); ++ki)
+	  {
+	    vector<ftEdge*> curr_edges = vx[ki]->allEdges(body);
+	    for (kj=0; kj<curr_edges.size(); ++kj)
+	      vx[ki]->removeEdge(curr_edges[kj]);
+	    
+	    shared_ptr<Vertex> new_vx = 
+	      shared_ptr<Vertex>(new Vertex(vx[ki]->getVertexPoint(), 
+					    curr_edges));
+	    for (kj=0; kj<curr_edges.size(); ++kj)
+	      curr_edges[kj]->replaceVertex(vx[ki], new_vx);
+	  }
+
+	int stop_break = 1;
+      }
   }
 
 //---------------------------------------------------------------------------

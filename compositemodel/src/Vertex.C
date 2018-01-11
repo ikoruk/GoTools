@@ -60,7 +60,7 @@ namespace Go
     }
 
 //===========================================================================
-    Vertex::Vertex(Point vertex_point, std::vector<ftEdge*> edges)
+    Vertex::Vertex(Point vertex_point, std::vector<ftEdge*>& edges)
 //===========================================================================
 	: vertex_point_(vertex_point)
     {
@@ -68,13 +68,13 @@ namespace Go
 	for (size_t ki=0; ki<edges.size(); ki++)
 	{
 	    size_t kj;
-	    for (kj=0; kj<ki; kj++)
+	    for (kj=0; kj<edges_.size(); kj++)
 		if (edges_[kj].first->twin() == edges[ki] && edges_[kj].second == 0)
 		{
 		    edges_[kj].second = edges[ki];
 		    break;
 		}
-	    if (kj < ki)
+	    if (kj < edges_.size())
 		continue;
 	    edges_.push_back(make_pair(edges[ki],dummy));
 	}
@@ -641,6 +641,26 @@ namespace Go
 	    edges.push_back(edges_[kj].first);
 	    if (edges_[kj].second)
 		edges.push_back(edges_[kj].second);
+	}
+	return edges;
+    }
+
+//===========================================================================
+    vector<ftEdge*> Vertex::allEdges(Body *bd) const
+//===========================================================================
+    {
+	vector<ftEdge*> edges;
+	for (size_t kj=0; kj<edges_.size(); kj++)
+	{
+	  Body *bd2 = edges_[kj].first->face()->asFtSurface()->getBody();
+	  if (bd2 == bd)
+	    edges.push_back(edges_[kj].first);
+	    if (edges_[kj].second)
+	      {
+		bd2 = edges_[kj].second->face()->asFtSurface()->getBody();
+		if (bd2 == bd)
+		  edges.push_back(edges_[kj].second);
+	      }
 	}
 	return edges;
     }
