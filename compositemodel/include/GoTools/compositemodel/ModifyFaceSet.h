@@ -81,6 +81,10 @@ class ModifyFaceSet
 
   ftSurface*  fetchNextFace(ftEdge* edge, Vertex* vx, double angtol,
 			    ftEdge*& next_edge, double& angle);
+
+  void addPrioritizedVertex(shared_ptr<ftSurface> face,
+			    shared_ptr<Vertex> vx,
+			    std::vector<shared_ptr<Vertex> >& vx_pri);
 };
 
 }  // namespace Go

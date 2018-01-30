@@ -674,7 +674,77 @@ void ftSurface::updateBoundaryLoops(shared_ptr<ftEdgeBase> new_edge)
       for (kj=0; kj<curr_edges.size(); ++kj)
 	curr_edges[kj]->replaceVertex(vx[ki], new_vx);
     }
+}
 
+//---------------------------------------------------------------------------
+  void ftSurface::updateTopology(vector<ftEdgeBase*> removed_edgs)
+//---------------------------------------------------------------------------
+{
+  vector<shared_ptr<ftEdgeBase> > edges = createInitialEdges();
+
+  for (size_t ki=0; ki<edges.size(); ++ki)
+    {
+      ftEdge *twin = NULL;
+      if (edges[ki]->twin())
+	twin = edges[ki]->twin()->geomEdge();
+
+      // Update radial edge information
+      shared_ptr<EdgeVertex> radedge1 = 
+	edges[ki]->geomEdge()->getEdgeMultiplicityInstance();
+      shared_ptr<EdgeVertex> radedge2; 
+      if (twin)
+	radedge2 = twin->getEdgeMultiplicityInstance();
+
+      if (radedge1.get())
+	{
+	  radedge1->removeEdge(edges[ki]->geomEdge());
+	  edges[ki]->geomEdge()->removeEdgeVertex();
+	}
+      if (radedge2.get())
+	{
+	  for (size_t kj=0; kj<removed_edgs.size(); ++kj)
+	    {
+	      if (radedge2->hasEdge(removed_edgs[kj]->geomEdge()))
+		  radedge2->removeEdge(removed_edgs[kj]->geomEdge());
+	    }
+	  radedge2->updateEdgeInfo(twin);
+	  edges[ki]->geomEdge()->setEdgeVertex(radedge2);
+	}
+
+      if (twin)
+	{
+	  // Update vertices
+	  shared_ptr<Vertex> v1, v2, v3, v4;
+	  twin->getVertices(v1, v2);
+	  edges[ki]->geomEdge()->getVertices(v3, v4);
+
+	  for (size_t kj=0; kj<removed_edgs.size(); ++kj)
+	    {
+	      if (v1->hasEdge(removed_edgs[kj]->geomEdge()))
+		  v1->removeEdge(removed_edgs[kj]->geomEdge());
+	      if (v2->hasEdge(removed_edgs[kj]->geomEdge()))
+		  v2->removeEdge(removed_edgs[kj]->geomEdge());
+	    }
+
+	  if (!(v1.get() == v3.get() || v1.get() == v4.get()))
+	    {
+	      shared_ptr<Vertex> vx = 
+		(v1->getDist(v3) < v1->getDist(v4)) ? v3 : v4;
+	      
+	      v1->updateEdgeTop(twin);
+	      edges[ki]->geomEdge()->replaceVertex(vx, v1);
+	    }
+	  if (!(v2.get() == v3.get() || v2.get() == v4.get()))
+	    {
+	      shared_ptr<Vertex> vx = 
+		(v2->getDist(v3) < v2->getDist(v4)) ? v3 : v4;
+	      
+	      v2->updateEdgeTop(twin);
+	      edges[ki]->geomEdge()->replaceVertex(vx, v2);
+	    }
+	}
+      int stop_break = 1;
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -2073,6 +2143,22 @@ vector<shared_ptr<Vertex> > ftSurface::getCornerVertices(double kink,
     }
 
   return result;
+}
+
+///===========================================================================
+vector<shared_ptr<Vertex> > ftSurface::getConcaveCorners(double kink) const
+//===========================================================================
+{
+  vector<shared_ptr<Vertex> > corners = getCornerVertices(kink);
+  vector<shared_ptr<Vertex> > concave;
+
+  // Look for concave vertices
+  size_t kj;
+  for (kj=0; kj<corners.size(); ++kj)
+    if (corners[kj]->isConcave((ftSurface*)this, kink))
+      concave.push_back(corners[kj]);
+
+  return concave;
 }
 
 //===========================================================================

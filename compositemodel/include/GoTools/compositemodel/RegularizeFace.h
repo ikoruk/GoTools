@@ -484,7 +484,7 @@ class RegularizeFace
 		       std::vector<std::pair<shared_ptr<Vertex>,int> >& match,
 		       std::vector<Point>& other_pos, Point& dir);
 
-  void checkCornerConfig();
+  void checkCornerConfig(std::vector<shared_ptr<Vertex> >& corner);
 };
 
 }  // namespace Go

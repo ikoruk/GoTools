@@ -1100,31 +1100,31 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
     if (!sfs2[kr].get())
       sfs2[kr] = faces[kr]->surface();
 
-  // Simplify boundary loops if possible
-  for (size_t ki=0; ki<sfs1.size(); ++ki)
-    {
-      shared_ptr<BoundedSurface> bd_sf = 
-	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs1[ki]);
-      if (bd_sf.get())
-	{
-	  double max_loop_dist;
-	  bool simplified = 
-	    bd_sf->simplifyBdLoops(toptol.gap, toptol.bend, max_loop_dist);
-	  int stop_break = 1;
-	}
-    }
-  for (size_t ki=0; ki<sfs2.size(); ++ki)
-    {
-      shared_ptr<BoundedSurface> bd_sf = 
-	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs2[ki]);
-      if (bd_sf.get())
-	{
-	  double max_loop_dist;
-	  bool simplified = 
-	    bd_sf->simplifyBdLoops(toptol.gap, toptol.bend, max_loop_dist);
-	  int stop_break = 1;
-	}
-    }
+  // // Simplify boundary loops if possible
+  // for (size_t ki=0; ki<sfs1.size(); ++ki)
+  //   {
+  //     shared_ptr<BoundedSurface> bd_sf = 
+  // 	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs1[ki]);
+  //     if (bd_sf.get())
+  // 	{
+  // 	  double max_loop_dist;
+  // 	  bool simplified = 
+  // 	    bd_sf->simplifyBdLoops(toptol.gap, toptol.bend, max_loop_dist);
+  // 	  int stop_break = 1;
+  // 	}
+  //   }
+  // for (size_t ki=0; ki<sfs2.size(); ++ki)
+  //   {
+  //     shared_ptr<BoundedSurface> bd_sf = 
+  // 	dynamic_pointer_cast<BoundedSurface,ParamSurface>(sfs2[ki]);
+  //     if (bd_sf.get())
+  // 	{
+  // 	  double max_loop_dist;
+  // 	  bool simplified = 
+  // 	    bd_sf->simplifyBdLoops(toptol.gap, toptol.bend, max_loop_dist);
+  // 	  int stop_break = 1;
+  // 	}
+  //   }
 
   // Number of element side surfaces
   int nmb_split1 = sfs1.size();
@@ -1197,6 +1197,7 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
   vector<shared_ptr<SurfaceModel> > surf_mod;
   vector<int> inside;
   double eps2 = 1.0e-6;
+  double small_fac = 0.8;
   if (split_groups[0].size() > 0)
     {
       // Estimate minimum surface size
@@ -1265,7 +1266,9 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	      
 	  double fac = 5.0; //2.0;
 	  if (std::max(max_u,max_v) < fac*toptol.neighbour && 
-	      std::min(max_u,max_v) < toptol.neighbour && elem_face == false)
+	      std::min(max_u,max_v) < toptol.neighbour && elem_face == false && 
+	      (!(std::min(len_u,len_v) < toptol.gap && 
+		 std::max(len_u,len_v) > toptol.neighbour)))
 	    min_len = std::min(min_len, std::min(len_u, len_v));
 	  else if (max_u < toptol.neighbour || max_v < toptol.neighbour)
 	    sliver_ix.push_back(tmp_ix);
@@ -1281,9 +1284,10 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  min_len = min_len_all;
 	}
       if (min_len < neighbour || 
-	  (min_len_all < len_tol && sliver_ix.size() == 0))
+	  (min_len_all < len_tol && small_fac*min_len_all < neighbour && 
+	   sliver_ix.size() == 0))
 	{
-	  neighbour = (3.0*gap < 0.9*min_len_all) ? 3.0*gap : 0.9*min_len_all;  //0.9*min_len_all;
+	  neighbour = /*(3.0*gap < small_fac*min_len_all) ? 3.0*gap :*/ small_fac*min_len_all;  //small_fac*min_len_all;
 	  if (gap > 0.75*neighbour)
 	    gap = 0.75*neighbour;
 	}
@@ -1423,9 +1427,10 @@ ftVolumeTools::splitElement(shared_ptr<ParamVolume>& elem_vol,
 	  min_len = min_len_all;
 	}
       if (min_len < neighbour || 
-	  (min_len_all < len_tol && sliver_ix.size() == 0))
+	  (min_len_all < len_tol && small_fac*min_len_all < neighbour && 
+	   sliver_ix.size() == 0))
 	{
-	  neighbour = (3.0*gap < 0.9*min_len_all) ? 3.0*gap : 0.9*min_len_all;  //0.9*min_len_all;
+	  neighbour = /*(3.0*gap < small_fac*min_len_all) ? 3.0*gap :*/ small_fac*min_len_all;  //small_fac*min_len_all;
 	  if (gap > 0.75*neighbour)
 	    gap = 0.75*neighbour;
 	}
@@ -1844,8 +1849,9 @@ ftVolumeTools::updateWithSplitFaces(shared_ptr<SurfaceModel> shell,
 	  catch (...)
 	    {
 	      int_cv1.clear();
+	      int_cv2.clear();
 	    }
-	  if (int_cv1.size() > 0)
+	  if (int_cv1.size() > 0 && int_cv2.size() > 0)
 	    {
 	      // Make bounded surfaces
 	      vector<shared_ptr<BoundedSurface> > trim_sfs;
@@ -2461,13 +2467,17 @@ ftVolumeTools::checkCoincCurves(vector<shared_ptr<SplineCurve> >& bd_cvs,
 
 struct IntcrvJoint
 {
+  bool atstart;
   double mind, minp;
   Point clopt;
-  int idx;
+  int idx1, idx2;
 
-  IntcrvJoint(int ix, double dist, double par, Point close)
+  IntcrvJoint(int ix1, bool start, int ix2, double dist, double par, 
+	      Point close)
   {
-    idx = ix;
+    atstart = start;
+    idx1 = ix1;
+    idx2 = ix2;
     mind = dist;
     minp = par;
     clopt = close;
@@ -2485,7 +2495,7 @@ ftVolumeTools::checkIntCrvJoint(vector<shared_ptr<CurveOnSurface> > & int_cvs,
   bool modified = false;
  
   // TEST
-  eps = 1.0e-6;
+  //eps = 1.0e-6;
 
   size_t nmb = int_cvs.size();
 #ifdef DEBUG
@@ -2579,8 +2589,15 @@ ftVolumeTools::checkIntCrvJoint(vector<shared_ptr<CurveOnSurface> > & int_cvs,
     }
 #endif
 
+  // Compute curve lengths
+  min_cv_len = HUGE;
+  for (size_t ki=0; ki<nmb; ++ki)
+    min_cv_len = std::min(min_cv_len, int_cvs[ki]->estimatedCurveLength());
+  double min_len_fac = 0.6;
+
   vector<int> remove_cvs;
   double lim_ang = 0.01; //0.25*M_PI;
+  vector<IntcrvJoint> joint;
   for (size_t ki=0; ki<nmb; ++ki)
     {
       double t1 = int_cvs[ki]->startparam();
@@ -2590,12 +2607,6 @@ ftVolumeTools::checkIntCrvJoint(vector<shared_ptr<CurveOnSurface> > & int_cvs,
 
       // Compute the closest points between endpoints of this curve and the other
       // curves
-      int clo_ix1 = -1, clo_ix2 = -1;
-      double mind1 = HUGE, mind2 = HUGE;
-      double minp1, minp2;
-      Point clopt1, clopt2;
-      vector<IntcrvJoint> joint1;
-      vector<IntcrvJoint> joint2;
       for (size_t kj=0; kj<nmb; ++kj)
 	{
 	  if (ki == kj)
@@ -2608,284 +2619,165 @@ ftVolumeTools::checkIntCrvJoint(vector<shared_ptr<CurveOnSurface> > & int_cvs,
 	  int_cvs[kj]->closestPoint(pos1, t3, t4, par1, clo1, d1);
 	  int_cvs[kj]->closestPoint(pos2, t3, t4, par2, clo2, d2);
 
-	  if (d1 < tol)
+	  if (d1 < tol && d1 < min_len_fac*min_cv_len)
 	    {
-	      // Check angle
+	      // Check angle and distance
 	      vector<Point> der1(2), der2(2);
 	      int_cvs[ki]->point(der1, t1, 1);
 	      int_cvs[kj]->point(der2, par1, 1);
+	      Point endpt = int_cvs[kj]->ParamCurve::point((par1-t3<t4-par1) ?
+							   t3 : t4);
 	      double ang = der1[1].angle(der2[1]);
 	      ang = std::min(ang, M_PI-ang);
-	      if (ang > lim_ang)
+	      double dd = endpt.dist(der2[0]);
+	      if (ang > lim_ang && dd > eps)
 		{
-		  IntcrvJoint tmp((int)kj, d1, par1, clo1);
-		  joint1.push_back(tmp);
+		  IntcrvJoint tmp((int)ki, true, (int)kj, d1, par1, clo1);
+		  joint.push_back(tmp);
 		}
 	    }
 
-	  if (d2 < tol)
+	    if (d2 < tol && d2 < min_len_fac*min_cv_len)
 	    {
-	      // Check angle
+	      // Check angle and distance
 	      vector<Point> der1(2), der2(2);
 	      int_cvs[ki]->point(der1, t2, 1);
 	      int_cvs[kj]->point(der2, par2, 1);
+	      Point endpt = int_cvs[kj]->ParamCurve::point((par2-t3<t4-par1) ?
+							   t3 : t4);
 	      double ang = der1[1].angle(der2[1]);
 	      ang = std::min(ang, M_PI-ang);
-	      if (ang > lim_ang)
+	      double dd = endpt.dist(der2[0]);
+	      if (ang > lim_ang && dd > eps)
 		{
-		  IntcrvJoint tmp((int)kj, d2, par2, clo2);
-		  joint2.push_back(tmp);
-		}
-	    }
-	  // if (d1 < mind1)
-	  //   {
-	  //     mind1 = d1;
-	  //     clo_ix1 = (int)kj;
-	  //     minp1 = par1;
-	  //     clopt1 = clo1;
-	  //   }
-
-	  // if (d2 < mind2)
-	  //   {
-	  //     mind2 = d2;
-	  //     clo_ix2 = (int)kj;
-	  //     minp2 = par2;
-	  //     clopt2 = clo2;
-	  //   }
-	}
-    
-
-      if (false /*mind1 < tol && mind2 < tol && clo_ix1 == clo_ix2*/)
-	{
-	  // Check for coincidence
-	  Identity ident;
-	  double start = std::min(minp1,minp2);
-	  double end = std::max(minp1,minp2);
-	  int coinc = ident.identicalCvs(int_cvs[ki], t1, t2, int_cvs[clo_ix1],
-					 start, end, tol);
-
-	  if (coinc == 1)
-	    {
-	      // Check if the entire curve is coincident
-	      double t3 = int_cvs[clo_ix1]->startparam();
-	      double t4 = int_cvs[clo_ix1]->endparam();
-	      Point pos3 = int_cvs[clo_ix1]->ParamCurve::point(t3);
-	      Point pos4 = int_cvs[clo_ix1]->ParamCurve::point(t4);
-	      if (pos3.dist((minp1 < minp2) ? clopt1 : clopt2) < tol &&
-		  pos4.dist((minp1 < minp2) ? clopt2 : clopt1) < tol )
-		{
-		  // Remove the curve with the poorest connection to its neighbours
-		  for (size_t kj=0; kj<nmb; ++kj)
-		    {
-		      if (kj == ki || kj == clo_ix1)
-			continue;
-		      Point pos5 = 
-			int_cvs[kj]->ParamCurve::point(int_cvs[kj]->startparam());
-		      Point pos6 = 
-			int_cvs[kj]->ParamCurve::point(int_cvs[kj]->endparam());
-		      double d1 = std::min(pos1.dist(pos5), pos1.dist(pos6));
-		      double d2 = std::min(pos2.dist(pos5), pos2.dist(pos6));
-		      double d3 = std::min(pos3.dist(pos5), pos3.dist(pos6));
-		      double d4 = std::min(pos4.dist(pos5), pos4.dist(pos6));
-		      double dd1 = std::min(d1, d2);
-		      double dd2 = std::min(d3, d4);
-		      // Too simple test. Should compare distances in both
-		      // endpoints simultanously
-		      if (dd1 < tol && dd2 < tol && dd1 < dd2)
-			{
-			  // Remove curve clo_ix1
-			  int_cvs.erase(int_cvs.begin()+clo_ix1);
-			  nmb--;
-			  break;
-			}
-		      else if (dd1 < tol && dd2 < tol && dd2 <= dd1)
-			{
-			  // Remove curve ki
-			  std::swap(int_cvs[ki], int_cvs[clo_ix1]);
-			  int_cvs.erase(int_cvs.begin()+clo_ix1);
-			  nmb--;
-			  break;
-			}
-		    }
-	      
-		}
-	      else
-		{
-		  // Remove the smallest curve
-		  std::swap(int_cvs[ki], int_cvs[clo_ix1]);
-		  int_cvs.erase(int_cvs.begin()+clo_ix1);
-		  nmb--;
-		}
-
-	      // Set parameters for no further modifications of these curves
-	      mind1 = 2.0*tol;
-	      mind2 = 2.0*tol;
-	    }
-	  int stop_break = 1;
-	}
-	
-      // Clean joints
-      for (int ka1=0; ka1<joint1.size(); ++ka1)
-	{
-	  for (int ka2=0; ka2<joint2.size(); ++ka2)
-	    {
-	      if (joint1[ka1].idx == joint2[ka2].idx)
-		{
-		  if (joint1[ka1].mind < joint2[ka2].mind)
-		    {
-		      joint2.erase(joint2.begin()+ka2);
-		      ka2--;
-		    }
-		  else if (joint1[ka1].mind > joint2[ka2].mind)
-		    {
-		      joint1.erase(joint1.begin()+ka1);
-		      ka1--;
-		      break;
-		    }
-		}
-	    }
-	}
-
-      for (size_t kj=0; kj<joint1.size(); ++kj)
-	{
-	  // Check if the closest point corresponds to an endpoint of the curve
-	  int ix = joint1[kj].idx;
-	  double t2_1 = int_cvs[ix]->startparam();
-	  double t2_2 = int_cvs[ix]->endparam();
-	  Point pt1 = int_cvs[ix]->ParamCurve::point(t2_1);
-	  Point pt2 = int_cvs[ix]->ParamCurve::point(t2_2);
-	  Point pt3 = int_cvs[ix]->ParamCurve::point(joint1[kj].minp);
-	  double dist1 = pt1.dist(pt3);
-	  double dist2 = pt2.dist(pt3);
-	  double tol2 = eps; //std::max(0.5*mind1, eps);
-	  if (dist1 > tol2 && dist2 > tol2)
-	    {
-	      // Split curve
-	      modified = true;
-	      int ix1  = (dist1 < dist2) ? 1 : 0;
-	      for (size_t kr=0; kr<joint2.size(); ++kr)
-	      	{
-		  if (joint2[kr].idx != ix)
-		    continue;
-
-	      	  // Check coincidene
-	      	  Point mid1 = 
-	      	    int_cvs[ix]->ParamCurve::point(0.5*(t2_1+joint1[kj].minp));
-	      	  Point mid2 = 
-	      	    int_cvs[ix]->ParamCurve::point(0.5*(t2_2+joint1[kj].minp));
-
-	      	  double tp1, tp2, td1, td2;
-	      	  Point tcl1, tcl2;
-	      	  int_cvs[ki]->closestPoint(mid1, t1, t2, tp1, tcl1, td1);
-	      	  int_cvs[ki]->closestPoint(mid2, t1, t2, tp2, tcl2, td2);
-	      	  if (td1 > tol && td2 <= tol) 
-	      	    ix1 = 0;
-	      	  else if (td2 > tol && td1 <= tol)
-	      	    ix1 = 1;
-	      	  else if (joint2[kr].minp < joint1[kj].minp)
-	      	    ix1 = 0;
-	      	  else
-	      	    ix1 = 1;
-	      	}
-
-	      int ix2 = 1 - ix1;
-	      double dist = (ix1 == 0) ? dist2 : dist1;
-	      vector<shared_ptr<ParamCurve> > sub_cvs = 
-		int_cvs[ix]->split(joint1[kj].minp);
-	      int_cvs[ix] = dynamic_pointer_cast<CurveOnSurface,ParamCurve>(sub_cvs[ix1]);
-	      // if (dist > tol)
-	      // 	{
-	      // 	  int_cvs.push_back(dynamic_pointer_cast<CurveOnSurface,ParamCurve>(sub_cvs[ix2]));
-	      // 	}
-
-	      // Check for coincidence with dismissed sub curve
-	      for (size_t kr=0; kr<joint1.size(); ++kr)
-		{
-		  if (kr == kj)
-		    continue;
-
-		  int idx2 = joint1[kr].idx;
-		  double len1 = int_cvs[idx2]->estimatedCurveLength();
-		  double len2 = sub_cvs[ix2]->estimatedCurveLength();
-		  int coinc = 0;
-		  if (fabs(len1-len2) < std::min(tol, std::min(len1,len2)))
-		    {
-		      Identity ident;
-		      coinc = ident.identicalCvs(sub_cvs[ix2], 
-						 sub_cvs[ix2]->startparam(),
-						 sub_cvs[ix2]->endparam(), 
-						 int_cvs[idx2],
-						 int_cvs[idx2]->startparam(),
-						 int_cvs[idx2]->endparam(), 
-						 tol);
-		    }
-		  if (coinc == 1)
-		    {
-		      // Mark curve for removal
-		      remove_cvs.push_back(idx2);
-		    }
-		}
-	    }
-	}
-
-      for (size_t kj=0; kj<joint2.size(); ++kj)
-	{
-	  int ix = joint2[kj].idx;
-	  if (int_cvs[ix]->startparam() >= joint2[kj].minp ||
-	      int_cvs[ix]->endparam() <= joint2[kj].minp)
-	    continue;
-
-	  // Check if the closest point corresponds to an endpoint of the curve
-	  Point pt1 = int_cvs[ix]->ParamCurve::point(int_cvs[ix]->startparam());
-	  Point pt2 = int_cvs[ix]->ParamCurve::point(int_cvs[ix]->endparam());
-	  Point pt3 = int_cvs[ix]->ParamCurve::point(joint2[kj].minp);
-	  double dist1 = pt1.dist(pt3);
-	  double dist2 = pt2.dist(pt3);
-	  double tol2 = eps; //std::max(0.5*mind2, eps);
-	  if (dist1 > tol2 && dist2 > tol2)
-	    {
-	      // Split curve
-	      modified = true;
-	      int ix1 = (dist1 < dist2) ? 1 : 0;
-	      int ix2 = 1 - ix1;
-	      double dist = std::min(dist1, dist2);
-	      vector<shared_ptr<ParamCurve> > sub_cvs = 
-		int_cvs[ix]->split(joint2[kj].minp);
-	      int_cvs[ix] = dynamic_pointer_cast<CurveOnSurface,ParamCurve>(sub_cvs[ix1]);
-	      // if (dist > tol)
-	      // 	{
-	      // 	  int_cvs.push_back(dynamic_pointer_cast<CurveOnSurface,ParamCurve>(sub_cvs[ix2]));
-	      // 	}
-
-	      // Check for coincidence with dismissed sub curve
-	      for (size_t kr=0; kr<joint2.size(); ++kr)
-		{
-		  if (kr == kj)
-		    continue;
-
-		  int idx2 = joint2[kr].idx;
-		  double len1 = int_cvs[idx2]->estimatedCurveLength();
-		  double len2 = sub_cvs[ix2]->estimatedCurveLength();
-		  int coinc = 0;
-		  if (fabs(len1-len2) < std::min(tol, std::min(len1,len2)))
-		    {
-		      Identity ident;
-		      ident.identicalCvs(sub_cvs[ix2], 
-					 sub_cvs[ix2]->startparam(),
-					 sub_cvs[ix2]->endparam(), 
-					 int_cvs[idx2],
-					 int_cvs[idx2]->startparam(),
-					 int_cvs[idx2]->endparam(), tol);
-		    }
-		  if (coinc == 1)
-		    {
-		      // Mark curve for removal
-		      remove_cvs.push_back(idx2);
-		    }
+		  IntcrvJoint tmp((int)ki, false, (int)kj, d2, par2, clo2);
+		  joint.push_back(tmp);
 		}
 	    }
 	}
     }
+    
+
+  // Clean joints
+  for (int ka1=0; ka1<(int)joint.size(); ++ka1)
+    {
+      for (int ka2=ka1+1; ka2<(int)joint.size(); ++ka2)
+	{
+	  if ((joint[ka1].idx1 == joint[ka2].idx1 &&
+	       joint[ka1].idx2 == joint[ka2].idx2) || 
+	      (joint[ka1].idx1 == joint[ka2].idx2 &&
+	       joint[ka1].idx2 == joint[ka2].idx1))
+	    {
+	      if (joint[ka1].mind < joint[ka2].mind)
+		{
+		  joint.erase(joint.begin()+ka2);
+		  ka2--;
+		}
+	      else if (joint[ka1].mind > joint[ka2].mind)
+		{
+		  joint.erase(joint.begin()+ka1);
+		  ka1--;
+		  break;
+		}
+	    }
+	}
+    }
+
+  // Sort joints
+  for (size_t ki=0; ki<joint.size(); ++ki)
+    for (size_t kj=ki+1; kj<joint.size(); ++kj)
+      {
+	if (joint[kj].mind < joint[ki].mind)
+	  std::swap(joint[ki], joint[kj]);
+      }
+
+  for (size_t kj=0; kj<joint.size(); ++kj)
+    {
+      // Check if the closest point corresponds to an endpoint of the curve
+      int ix1 = joint[kj].idx1;
+      int ix2 = joint[kj].idx2;
+      double t1 = int_cvs[ix1]->startparam();
+      double t2 = int_cvs[ix1]->endparam();
+      double t2_1 = int_cvs[ix2]->startparam();
+      double t2_2 = int_cvs[ix2]->endparam();
+      Point pt1 = int_cvs[ix2]->ParamCurve::point(t2_1);
+      Point pt2 = int_cvs[ix2]->ParamCurve::point(t2_2);
+      Point pt3 = int_cvs[ix2]->ParamCurve::point(joint[kj].minp);
+      double dist1 = pt1.dist(pt3);
+      double dist2 = pt2.dist(pt3);
+      double tol2 = eps; 
+      if (dist1 > tol2 && dist2 > tol2)
+	{
+	  // Split curve
+	  modified = true;
+	  int ixb  = (dist1 < dist2) ? 1 : 0;
+
+	  // Check coincidene
+	  Point mid1 = 
+	    int_cvs[ix2]->ParamCurve::point(0.5*(t2_1+joint[kj].minp));
+	  Point mid2 = 
+	    int_cvs[ix2]->ParamCurve::point(0.5*(t2_2+joint[kj].minp));
+	      
+	  double tp1, tp2, td1, td2;
+	  Point tcl1, tcl2;
+	  int_cvs[ix1]->closestPoint(mid1, t1, t2, tp1, tcl1, td1);
+	  int_cvs[ix1]->closestPoint(mid2, t1, t2, tp2, tcl2, td2);
+	  for (size_t kr=0; kr<joint.size(); ++kr)
+	    {
+	      if (joint[kr].idx1 != ix1 || joint[kr].idx2 != ix2)
+		continue;
+	      
+	      if (td1 > tol && td2 <= tol) 
+		ixb = 0;
+	      else if (td2 > tol && td1 <= tol)
+		ixb = 1;
+	      else if (joint[kr].minp < joint[kj].minp)
+		ixb = 0;
+	      else
+		ixb = 1;
+	    }
+
+	  int ixc = 1 - ixb;
+	  double dist = (ixb == 0) ? dist2 : dist1;
+	  vector<shared_ptr<ParamCurve> > sub_cvs = 
+	    int_cvs[ix2]->split(joint[kj].minp);
+	  int_cvs[ix2] = dynamic_pointer_cast<CurveOnSurface,ParamCurve>(sub_cvs[ixb]);
+	  // if (dist > tol)
+	  // 	{
+	  // 	  int_cvs.push_back(dynamic_pointer_cast<CurveOnSurface,ParamCurve>(sub_cvs[ix2]));
+	  // 	}
+
+	  // Check for coincidence with dismissed sub curve
+	  for (size_t kr=0; kr<joint.size(); ++kr)
+	    {
+	      if (kr == kj)
+		continue;
+
+	      int idx2 = joint[kr].idx2;
+	      double len1 = int_cvs[idx2]->estimatedCurveLength();
+	      double len2 = sub_cvs[ixc]->estimatedCurveLength();
+	      int coinc = 0;
+	      if (fabs(len1-len2) < std::min(tol, std::min(len1,len2)))
+		{
+		  Identity ident;
+		  coinc = ident.identicalCvs(sub_cvs[ixc], 
+					     sub_cvs[ixc]->startparam(),
+					     sub_cvs[ixc]->endparam(), 
+					     int_cvs[idx2],
+					     int_cvs[idx2]->startparam(),
+					     int_cvs[idx2]->endparam(), 
+					     tol);
+		}
+	      if (coinc == 1)
+		{
+		  // Mark curve for removal
+		  remove_cvs.push_back(idx2);
+		}
+	    }
+	}
+    }
+
+
   if (remove_cvs.size() > 0)
     {
       std::sort(remove_cvs.begin(), remove_cvs.end());

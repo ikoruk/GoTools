@@ -87,6 +87,10 @@ class Vertex
     /// changes in the associated model
     void removeEdge(ftEdge* edge);
 
+    /// Update twin information related to edge. Used in connetion with 
+    /// topology changes in the associated model
+    void updateEdgeTop(ftEdge* edge);
+
     /// Given an edge connected to this vertex, remove twin information
     /// about the edge in the vertex. Used in connetion with topology 
     /// changes in the associated model
@@ -192,7 +196,8 @@ class Vertex
     /// the same two surface meet, the function can be told to
     /// return true
     bool sameEdge(Vertex* other, double angtol = 0.0,
-		  bool bypass_insignificant=false) const;
+		  bool bypass_insignificant=false, 
+		  Vertex *prev=NULL) const;
 
 
     /// Check if this vertex and the other vertex belongs to the same face
@@ -209,6 +214,9 @@ class Vertex
     /// return true
     bool connectedToSameVertex(Vertex* other, double angtol = 0.0,
 			       bool bypass_insignificant=false) const;
+
+    shared_ptr<Vertex> connectionVertex(Vertex* other, double angtol = 0.0,
+					bool bypass_insignificant=false) const;
 
     /// Fetch the vertex connected (through an edge) to both this and
     /// the other vertex, if any

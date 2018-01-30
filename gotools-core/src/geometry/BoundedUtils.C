@@ -1426,15 +1426,32 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
     for (ki=0; ki<(int)old_loop_cvs.size(); ++ki)
       for (kj=0; kj<(int)part_bd_cvs.size(); ++kj)
 	{
-	  int coincidence = checkCurveCoincidence(old_loop_cvs[ki], part_bd_cvs[kj], 
-						  min_loop_tol, false);
-	  if (coincidence)
+	  int coincidence = checkCurveCoinc(old_loop_cvs[ki], part_bd_cvs[kj], 
+					    min_loop_tol);
+	  if (coincidence == 1 || coincidence == 3)
 	    {
-	      // Coincidence. Remove last curve
+	      // Coincidence or the part boundary curve is embedded in the
+	      // loop curve. Remove part boundary curve
 	      part_bd_cvs.erase(part_bd_cvs.begin() + kj);
+	      if (last_split > 0 && kj < last_split)
+		--last_split;
 	      kj--;
 	    }
 	}
+
+    if (part_bd_cvs.size() == 0)
+      {
+	// No need for rearrangement. Return existing boundray loop
+	for (size_t kf=0; kf<boundary_loops.size(); ++kf)
+	  {
+	    vector<shared_ptr<CurveOnSurface> > bd_loop;
+	    int bd_size = boundary_loops[kf].size();
+	    for (int kk=0; kk<bd_size; ++kk)
+	      bd_loop.push_back(dynamic_pointer_cast<CurveOnSurface,ParamCurve>(boundary_loops[kf][kk]));
+	    new_loops.push_back(bd_loop);
+	  }
+	return new_loops;
+      }
 
     // We run part_bd_cvs, splitting if they start/end in inner part of a cv in old_loop_cvs.
     if (last_split < 0)
@@ -2037,6 +2054,92 @@ BoundedUtils::getBoundaryLoops(const BoundedSurface& sf,
     return new_loops; // We should be done
 }
 
+
+//===========================================================================
+int BoundedUtils::checkCurveCoinc(shared_ptr<ParamCurve> cv1, 
+				  shared_ptr<ParamCurve> cv2, 
+				  double tol)
+//===========================================================================
+{
+  int coinc = 0;  // Initially no coincidence
+
+  // Check if two curves are identical, or one is embedded in the other.
+  // Compare endpoints
+  Point pt1 = cv1->point(cv1->startparam());
+  Point pt2 = cv1->point(cv1->endparam());
+  Point pt3 = cv2->point(cv2->startparam());
+  Point pt4 = cv2->point(cv2->endparam());
+  double d1 = pt1.dist(pt3);
+  double d2 = pt1.dist(pt4);
+  double d3 = pt2.dist(pt3);
+  double d4 = pt2.dist(pt4);
+
+  double param1[2], param2[2];  // Endpoint of coincidence interval
+  if ((d1 < tol && d4 < tol) || (d2 < tol && d3 < tol))
+    {
+      // Potential full coincidence
+      param1[0] = cv1->startparam();
+      param1[1] = cv1->endparam();
+      param2[0] = cv2->startparam();
+      param2[1] = cv2->endparam();
+      coinc = 1;
+    }
+  else
+    {
+      // Check if cv1 is embedded in cv2
+      Point clo1, clo2;
+      double par1, par2, dist1, dist2;
+      cv2->closestPoint(pt1, cv2->startparam(), cv2->endparam(),
+			par1, clo1, dist1);
+      cv2->closestPoint(pt2, cv2->startparam(), cv2->endparam(),
+			par2, clo2, dist2);
+      if (dist1 < tol && dist2 < tol)
+	{
+	  param1[0] = cv1->startparam();
+	  param1[1] = cv1->endparam();
+	  param2[0] = std::min(par1, par2);
+	  param2[1] = std::max(par1, par2);
+	  coinc = 2;
+	}
+      else
+	{
+	  // Check of cv2 is embedded in cv1
+	  cv1->closestPoint(pt3, cv1->startparam(), cv1->endparam(),
+			    par1, clo1, dist1);
+	  cv1->closestPoint(pt4, cv1->startparam(), cv1->endparam(),
+			    par2, clo2, dist2);
+	  if (dist1 < tol && dist2 < tol)
+	    {
+	      param1[0] = std::min(par1, par2);
+	      param1[1] = std::max(par1, par2);
+	      param2[0] = cv2->startparam();
+	      param2[1] = cv2->endparam();
+	      coinc = 3;
+	    }
+	}
+    }
+ 	  
+  if (coinc == 0)
+    return coinc;  // No coincidence
+
+
+  // Check the inner of the curve
+  int nmb_sample = 3;
+  double tdel = (param1[1] - param1[0])/(double)(nmb_sample+1);
+  double tpar;
+  int ki;
+  for (ki=0, tpar=param1[0]+tdel; ki<nmb_sample; ++ki, tpar+=tdel)
+    {
+      Point clo;
+      double par, dist;
+      Point pos = cv1->point(tpar);
+      cv2->closestPoint(pos, param2[0], param2[1], par, clo, dist);
+      if (dist >= tol)
+	return 0;
+    }
+
+  return coinc;
+}
 
 //===========================================================================
 int BoundedUtils::checkCurveCoincidence(shared_ptr<CurveOnSurface> cv1, 
@@ -2941,6 +3044,7 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
     // We run through the parallell vectors extracting parts lying on sf.
     double fac = 1.5;
     double angtol = 0.1;
+    double pihalf = 0.5*M_PI;
     vector<shared_ptr<CurveOnSurface> > new_cvs1, new_cvs2; //(cvs2.size());
     for (ki = 0; ki < int(cvs1.size()); ++ki) {
       // First make sure that the parameteriazation of geometry curves and
@@ -2956,8 +3060,10 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 	      cvs1[ki]->ensureSpaceCrvExistence(epsge);
 	      DirectionCone cone1 = tmp_cv->directionCone();
 	      DirectionCone cone2 = cvs1[ki]->spaceCurve()->directionCone();
+	      double ang = cone1.centre().angle(cone2.centre());
 	      if (cone2.greaterThanPi() ||
-		  (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol))
+		  (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol) ||
+		  cone2.angle() + 0.5*ang >= pihalf)
 		{
 #ifdef DEBUG
 		  std::cout << "Check curve" << std::endl;
@@ -2976,8 +3082,10 @@ void BoundedUtils::intersectWithSurfaces(vector<shared_ptr<CurveOnSurface> >& cv
 		{
 		  DirectionCone cone1 = tmp_cv->directionCone();
 		  DirectionCone cone2 = cvs1[ki]->parameterCurve()->directionCone();
+		  double ang = cone1.centre().angle(cone2.centre());
 		  if (cone2.greaterThanPi() ||
-		      (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol))
+		      (cone2.angle() > fac*cone1.angle() && cone2.angle() > angtol) ||
+		      cone2.angle() + 0.5*ang >= pihalf)
 		    {
 #ifdef DEBUG
 		      std::cout << "Check curve" << std::endl;

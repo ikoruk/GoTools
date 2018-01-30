@@ -439,6 +439,18 @@ int ModifyFaceSet::divide()
 	  // if (/*nmb_try == 1 && */is_concave[kj] && (!is_concave[1-kj]))
 	  //   continue;  // Ambigous situation, postpone if possible
 	  
+	  bool concave = vxs[kj]->isConcave(adj_face[kj], tptol.bend);
+	  if (concave && kj < adj_face.size() - 1)
+	    {
+	      // Postpone
+	      size_t last = adj_face.size()-1;
+	      std::swap(adj_face[kj], adj_face[last]);
+	      std::swap(next_edge[kj], next_edge[last]);
+	      std::swap(vxs[kj], vxs[last]);
+	      std::swap(angle[kj], angle[last]);
+	      std::swap(curr_edges[kj], curr_edges[last]);
+	    }
+
 	  int next_ix;
 	  if (adj_face[kj] && (!next_edge[kj])/*M_PI-angle[kj] > tptol.bend*/)
 	    {
@@ -473,13 +485,20 @@ int ModifyFaceSet::divide()
 		vx_pri.push_back(vx1_curr);
 	      if (vx2_curr && vx2_curr.get() != vxs[kj].get())
 		vx_pri.push_back(vx2_curr);
-	      regularize.setPriVx(vx_pri, false);
-	      
 	      vector<shared_ptr<Vertex> > corner = 
 		curr->getCornerVertices(tptol.bend);
+	      bool degen_flag = (corner.size() < 4 || vx_pri.size() > 1/*<= 4*/);
+
+	      if (vx_pri.size() <= 1 && kj < vxs.size()-1)
+		{
+		  addPrioritizedVertex(curr, vxs[kj+1], vx_pri);
+		}
+
+	      regularize.setPriVx(vx_pri, false);
+	      
 	      if (corner.size() > 4)
 		regularize.setDivideInT(false);
-	      if (corner.size() < 4 || vx_pri.size() > 1/*<= 4*/)
+	      if (degen_flag)
 		regularize.setDegenFlag(true);
 	      regularize.setMaxRec(1); // Only one split
 	      vector<shared_ptr<ftSurface> > faces2 = 
@@ -711,3 +730,43 @@ ftSurface*  ModifyFaceSet::fetchNextFace(ftEdge* edge, Vertex* vx, double angtol
 }
 
 
+//==========================================================================
+void ModifyFaceSet::addPrioritizedVertex(shared_ptr<ftSurface> face,
+					 shared_ptr<Vertex> vx,
+					 vector<shared_ptr<Vertex> >& vx_pri)
+//==========================================================================
+{
+  // Compute closest boundary point to current vertex
+  Point vx_pos = vx->getVertexPoint();
+  shared_ptr<Loop> loop = face->getBoundaryLoop(0);
+
+  double par, dist;
+  int ind;
+  Point close;
+  loop->closestPoint(vx_pos, ind, par, close, dist);
+
+  shared_ptr<ftEdgeBase> edg = loop->getEdge(ind);
+  double t1 = edg->tMin();
+  double t2 = edg->tMax();
+  double tdel = (t2 - t1)/10.0;
+  ftEdge *edg2 = edg->geomEdge();
+  if (edg2)
+    {
+      // Check if the edge already is connected to a prioritized vertex
+      size_t ki;
+      for (ki=0; ki<vx_pri.size(); ++ki)
+	if (edg2->hasVertex(vx_pri[ki].get()))
+	  break;
+      if (ki < vx_pri.size())
+	edg2 = NULL;
+    }
+	    
+  if (edg2 && par > t1+tdel && par < t2-tdel)
+    {
+      // Create split vertex
+      shared_ptr<ftEdge> newedge = edg2->split2(par);
+      shared_ptr<Vertex> tmp_vx = edg2->getCommonVertex(newedge.get());
+      vx_pri.push_back(tmp_vx);
+    }
+
+}

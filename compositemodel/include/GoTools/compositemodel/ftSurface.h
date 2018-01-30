@@ -156,8 +156,13 @@ public:
     /// Update the information stored in the boundary loops
     virtual void updateBoundaryLoops(shared_ptr<ftEdgeBase> new_edge);
 
-    // Split vertices
+    /// Split vertices to isolate face from a face set it was
+    /// previously a part of
     virtual void isolateFace();
+
+    /// Update face vertices based on adjacency information 
+    /// represented in the edges
+    virtual void updateTopology(std::vector<ftEdgeBase*> removed_edgs);
 
     // Added in this class
 
@@ -313,6 +318,9 @@ public:
     /// Get corner vertices restricted to a particular loop
     std::vector<shared_ptr<Vertex> > getCornerVertices(double kink,
 						       int loop_idx) const;
+
+    /// Get concave corner vertices
+    std::vector<shared_ptr<Vertex> > getConcaveCorners(double kink) const;
 
     /// Get number of corner vertices
     int nmbCornerVertices(double kink) const;

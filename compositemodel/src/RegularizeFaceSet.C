@@ -136,8 +136,6 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   void RegularizeFaceSet::divide(bool reverse_sequence)
 //==========================================================================
 {
-  std::cout << "Entering regularize face set, divide" << std::endl;
-
   // Divide the faces one by one. First collect all faces
   vector<shared_ptr<ftSurface> > faces = model_->allFaces();
   int nmb_faces = (int)faces.size();
@@ -148,7 +146,6 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   // Check if the model is rotational
   Point centre, axis;
   identifyRotationalModel(centre, axis);
-  std::cout << "After rotational matrix" << std::endl;
 
 #ifdef DEBUG_REG
   std::ofstream ofpre("pre_reg2.g2");
@@ -176,7 +173,6 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   // vector<shared_ptr<ftSurface> > remaining_faces;
   // remaining_faces.insert(remaining_faces.end(), faces.begin(), faces.end());
 
-    std::cout << "level" << std::endl;
   if (level_ > 0)
     {
       // Check if a tailored restructuring of specific surfaces
@@ -197,10 +193,7 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   
   // Set face correspondance
   //if (corr_faces_.size() == 0)
-    std::cout << "To compute face correspondance" << std::endl;
     computeFaceCorrespondance(faces);
-
-    std::cout << "Face correspondance computed" << std::endl;
 
   int kj;
   // vector<shared_ptr<ftSurface> > deg_faces;
@@ -237,18 +230,23 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
 	  break;
       if (kr < corr_faces_.size())
 	{
-	  size_t idx = (corr_faces_[kr].first == kj) ?
+	  int idx = (corr_faces_[kr].first == kj) ?
 	    corr_faces_[kr].second : corr_faces_[kr].first;
-	  shared_ptr<ftSurface> other = faces[idx];
-
-	  if (curr->nmbBoundaryLoops() == 1 && other->nmbBoundaryLoops() == 1)
+	  if (idx >= 0)
 	    {
-	      int nmb_bd = other->nmbOuterBdCrvs(tptol.gap, tptol.neighbour, 
-						 tptol.bend);
-	      if (nmb_bd < 4)
+	      shared_ptr<ftSurface> other = faces[idx];
+
+	      if (curr->nmbBoundaryLoops() == 1 && 
+		  other->nmbBoundaryLoops() == 1)
 		{
-		  allow_deg[kj] = 1; 
-		  other_face[kj] = other;
+		  int nmb_bd = other->nmbOuterBdCrvs(tptol.gap, 
+						     tptol.neighbour, 
+						     tptol.bend);
+		  if (nmb_bd < 4)
+		    {
+		      allow_deg[kj] = 1; 
+		      other_face[kj] = other;
+		    }
 		}
 	    }
 	}
@@ -286,7 +284,6 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
   // Special case treatment providing prioritized vertices for split
   // Report also on concave corners which imply a slightly different
   // stragegy for block structuring of single faces
-  std::cout << "To define split vertices" << std::endl;
   bool has_concavecorners = false;
   defineSplitVx(faces, allow_deg, other_face, perm, has_concavecorners);
 #ifdef DEBUG_REG
@@ -384,13 +381,16 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
 	  break;
       if (kr < corr_faces_.size())
 	{
-	  size_t idx = (corr_faces_[kr].first == perm[kj]) ?
+	  int idx = (corr_faces_[kr].first == perm[kj]) ?
 	    corr_faces_[kr].second : corr_faces_[kr].first;
-	  other = faces[idx];
-	  if (cand_split_[perm[kj]].size() >  0 && split_mode_ > 1)
+	  if (idx >= 0)
 	    {
-	      if (curr->nmbBoundaryLoops() < other->nmbBoundaryLoops())
-		split_in_cand = true;
+	      other = faces[idx];
+	      if (cand_split_[perm[kj]].size() >  0 && split_mode_ > 1)
+		{
+		  if (curr->nmbBoundaryLoops() < other->nmbBoundaryLoops())
+		    split_in_cand = true;
+		}
 	    }
 	}
 
@@ -526,11 +526,14 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
 	      break;
 	  if (kr < corr_faces_.size())
 	    {
-	      size_t idx = (corr_faces_[kr].first == perm[kj]) ?
+	      int idx = (corr_faces_[kr].first == perm[kj]) ?
 		corr_faces_[kr].second : corr_faces_[kr].first;
-	      vector<pair<pair<Point,int>, std::pair<Point,int> > > end_split =
-		getEndSplit(curr, faces2);
-	      cand_split_[idx] = end_split;
+	      if (idx >= 0)
+		{
+		  vector<pair<pair<Point,int>, std::pair<Point,int> > > end_split =
+		    getEndSplit(curr, faces2);
+		  cand_split_[idx] = end_split;
+		}
 	    }
 
 	  if (allow_deg[perm[kj]] == 2)
@@ -606,6 +609,8 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
 	    {
 	      vector<shared_ptr<Vertex> > corners = 
 		faces2[kr]->getCornerVertices(tptol.bend);
+	      RegularizeUtils::checkCornerConfig(corners, faces2[kr],
+						 2.0*tptol.bend);
 	      if (corners.size() > 4)
 		{
 		  faces.push_back(faces2[kr]);
@@ -615,6 +620,8 @@ shared_ptr<SurfaceModel> RegularizeFaceSet::getRegularModel(bool reverse_sequenc
 		  perm.push_back(nmb_faces-1);
 		  vector<pair<pair<Point,int>, pair<Point,int> > > dummy;
 		  cand_split_.push_back(dummy);
+		  shared_ptr<ftSurface> dummy_other;
+		  other_face.push_back(dummy_other);
 		}
 	    }
 	}
@@ -2176,18 +2183,21 @@ RegularizeFaceSet::prioritizeFaces(vector<shared_ptr<ftSurface> >& faces,
 	      break;
 	  if (kr < corr_faces_.size())
 	    {
-	      size_t ix = (corr_faces_[kr].first == perm[ki]) ? corr_faces_[kr].second :
+	      int ix = (corr_faces_[kr].first == perm[ki]) ? corr_faces_[kr].second :
 		corr_faces_[kr].first;
-	      for (kr=0; kr<perm.size(); ++kr)
-		if (perm[kr] == (int)ix)
-		  break;
-	      if (kr >= perm.size())
-		kr = ki;
-	      int nmb_loops2 = faces[ix]->nmbBoundaryLoops();
-	      if (kr > ki && nmb_loops2 > nmb_loops)
+	      if (ix >= 0)
 		{
-		  std::swap(perm[ki], perm[kr]);
-		  nmb_loops = nmb_loops2;
+		  for (kr=0; kr<perm.size(); ++kr)
+		    if (perm[kr] == (int)ix)
+		      break;
+		  if (kr >= perm.size())
+		    kr = ki;
+		  int nmb_loops2 = faces[ix]->nmbBoundaryLoops();
+		  if (kr > ki && nmb_loops2 > nmb_loops)
+		    {
+		      std::swap(perm[ki], perm[kr]);
+		      nmb_loops = nmb_loops2;
+		    }
 		}
 	    }
 	  
@@ -2216,8 +2226,8 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
 //==========================================================================
 {
   // For each combination of faces, check if they are next neighbours through
-  // a number of (at least three) other faces. This will not catch all occurances
-  // of faces correspondance
+  // a number of (at least three) other faces. This will not catch all 
+  // occurances of faces correspondance
   int ki, kj;
   size_t kr, kh;
 
@@ -2230,6 +2240,19 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
     {
       corr_dist.push_back(0.0);
       len_frac.push_back(0.0);
+    }
+
+  // Sort face correspondances to get the empty ones last
+  size_t final_corr = fixed_corr;
+  for (kr=0; kr<final_corr; )
+    {
+      if (corr_faces_[kr].second < 0)
+	{
+	  std::swap(corr_faces_[kr], corr_faces_[final_corr-1]);
+	  final_corr--;
+	}
+      else
+	++kr;
     }
 
   // Collect information
@@ -2254,7 +2277,7 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
       for (kr=0; kr<corr_faces_.size(); ++kr)
 	if (corr_faces_[kr].first == ki || corr_faces_[kr].second == ki)
 	  break;
-      if (kr < fixed_corr)
+      if (kr < final_corr)
       	continue;
 
       for (kj=ki+1; kj<(int)faces.size(); ++kj)
@@ -2263,8 +2286,10 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
 	  for (kh=0; kh<corr_faces_.size(); ++kh)
 	    if (corr_faces_[kh].first == kj || corr_faces_[kh].second == kj)
 	      break;
-	  if (kr < fixed_corr)
+	  if (kh < final_corr)
 	    continue;
+	  if (kr < fixed_corr && kh < fixed_corr)
+	    continue;  // No freedom in face correspondance
 
 #ifdef DEBUG_REG
 	  std::ofstream of("curr_corr_face.g2");
@@ -2294,32 +2319,31 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
 	      double len1 = box[ki].high().dist(box[ki].low());
 	      double len2 = box[kj].high().dist(box[kj].low());
 	      double frac = std::min(len1,len2)/std::max(len1,len2);
-	      if ((kr == corr_faces_.size() || 
-		   (kr >= fixed_corr && 
-		    len_frac[kr]*dist < frac*corr_dist[kr])) &&
-		  (kh == corr_faces_.size() || 
-		   (kh >= fixed_corr &&
-		    len_frac[kh]*dist < frac*corr_dist[kh])))
+
+	      // Check if a match is found
+	      if (kr < corr_faces_.size() && 
+		  (len_frac[kr]*dist < frac*corr_dist[kr] ||
+		   corr_faces_[kr].second < 0))
 		{
-		  // A match is found
-		  if (kr < corr_faces_.size() && len_frac[kr]*dist < frac*corr_dist[kr])
-		    {
-		      corr_faces_[kr] = make_pair(ki, kj);
-		      corr_dist[kr] = dist;
-		      len_frac[kr] = frac;
-		    }
-		  else if (kh < corr_faces_.size() && len_frac[kh]*dist < frac*corr_dist[kh])
-		    {
-		      corr_faces_[kh] = make_pair(ki, kj);
-		      corr_dist[kh] = dist;
-		      len_frac[kh] = frac;
-		    }
-		  else 
-		    {
-		       setFaceCorrespondance(ki, kj);
-		       corr_dist.push_back(dist);
-		       len_frac.push_back(frac);
-		    }
+		  corr_faces_[kr] = (kr < fixed_corr) ?
+		    make_pair(corr_faces_[kr].first, kj) : make_pair(ki,kj);
+		  corr_dist[kr] = dist;
+		  len_frac[kr] = frac;
+		}
+	      else if (kh < corr_faces_.size() && 
+		       (len_frac[kh]*dist < frac*corr_dist[kh] ||
+			corr_faces_[kh].second < 0))
+		{
+		  corr_faces_[kh] = (kh < fixed_corr) ? 
+		    make_pair(corr_faces_[kh].first, ki) : make_pair(ki, kj);
+		  corr_dist[kh] = dist;
+		  len_frac[kh] = frac;
+		}
+	      else if (kr == corr_faces_.size() && kh == corr_faces_.size())
+		{
+		  setFaceCorrespondance(ki, kj);
+		  corr_dist.push_back(dist);
+		  len_frac.push_back(frac);
 		}
 	    }
 	  else
@@ -2353,26 +2377,32 @@ RegularizeFaceSet::computeFaceCorrespondance(vector<shared_ptr<ftSurface> >& fac
 			  double len1 = box[ki].high().dist(box[ki].low());
 			  double len2 = box[kj].high().dist(box[kj].low());
 			  double frac = std::min(len1,len2)/std::max(len1,len2);
-			  if (kr == corr_faces_.size() || dist < corr_dist[kr])
+			  if (kr < corr_faces_.size() && 
+			      (dist < corr_dist[kr] ||
+			       corr_faces_[kr].second < 0))
 			    {
-			      if (kr < corr_faces_.size() && dist < corr_dist[kr])
-				{
-				  corr_faces_[kr] = make_pair(ki, kj);
-				  corr_dist[kr] = dist;
-				  len_frac[kr] = frac;
-				}
-			      else if (kh < corr_faces_.size() && dist < corr_dist[kh])
-				{
-				  corr_faces_[kh] = make_pair(ki, kj);
-				  corr_dist[kh] = dist;
-				  len_frac[kh] = frac;
-				}
-			      else 
-				{
-				  setFaceCorrespondance(ki, kj);
-				  corr_dist.push_back(dist);
-				  len_frac.push_back(frac);
-				}
+			      corr_faces_[kr] = (kr < fixed_corr) ?
+				make_pair(corr_faces_[kr].first, kj) : 
+				make_pair(ki, kj);
+			      corr_dist[kr] = dist;
+			      len_frac[kr] = frac;
+			    }
+			  else if (kh < corr_faces_.size() && 
+				   (dist < corr_dist[kh] ||
+				    corr_faces_[kh].second < 0))
+			    {
+			      corr_faces_[kh] = (kh < fixed_corr) ? 
+				make_pair(corr_faces_[kh].first, ki) : 
+				make_pair(ki, kj);
+			      corr_dist[kh] = dist;
+			      len_frac[kh] = frac;
+			    }
+			  else if (kr == corr_faces_.size() && 
+				   kh == corr_faces_.size())
+			    {
+			      setFaceCorrespondance(ki, kj);
+			      corr_dist.push_back(dist);
+			      len_frac.push_back(frac);
 			    }
 			}
 		    }
@@ -2512,7 +2542,26 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
     }
 
   tpTolerances tptol = model_->getTolerances();
-  if (faces.size() >= 7 && corr_faces_.size() == 3)
+  int nmb_corr_faces = 0;
+  for (size_t kj=0; kj<corr_faces_.size(); ++kj)
+    {
+      if (corr_faces_[kj].second >= 0)
+	nmb_corr_faces += 2;
+      else
+	nmb_corr_faces++;
+    }
+
+  if (nmb_corr_faces < 2*(int)corr_faces_.size())
+    {
+      // This is a far to drastic action, but allow it until a counter example
+      // occurs that makes it possible to refine it
+      for (size_t kj=0; kj<allow_deg.size(); ++kj)
+	allow_deg[kj] = 0;
+      set_deg = false;
+    }
+
+  if ((faces.size() >= 7 && corr_faces_.size() == 3) ||
+      (int)faces.size() == nmb_corr_faces+1)
     {
       // Fetch the face not included in an opposite face relation
       shared_ptr<ftSurface> curr_face;
@@ -2559,7 +2608,31 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	{
 	  // Special case found. Define new vertex to guide splitting
 	  // Select edge and associated face
-	  // First check if any face is four sided
+	  // Check for insignificant vertices between edges
+	  vector<pair<shared_ptr<ftEdge>,shared_ptr<ftEdge> > > same_edgs;
+	  if (edgs.size() > curr_nmb_corner)
+	    {
+	      double angtol = model_->getTolerances().bend;
+	      for (size_t kj=0; kj<edgs.size(); ++kj)
+		for (size_t kr=kj+1; kr<edgs.size(); ++kr)
+		  {
+		    shared_ptr<Vertex> common = 
+		      edgs[kj]->getCommonVertex(edgs[kr].get());
+		    if (!common.get())
+		      continue;
+		    shared_ptr<Vertex> vx1 = 
+		      edgs[kj]->getOtherVertex(common.get());
+		    shared_ptr<Vertex> vx2 = 
+		      edgs[kr]->getOtherVertex(common.get());
+		    if (vx1->sameEdge(vx2.get(), angtol, true))
+		      same_edgs.push_back(make_pair(edgs[kj],edgs[kr]));
+		  }
+	    }
+
+	  // Dismiss edge candidates where the adjacent face is four sided
+	  // depending on the existence of non-existing corresponding
+	  // faces
+	  int nmb_non = 2*(int)corr_faces_.size() - nmb_corr_faces;
 	  vector<shared_ptr<Vertex> > corners = 
 	    curr_face->getCornerVertices(model_->getTolerances().bend);
 	  vector<shared_ptr<ftEdge> > saved_edgs;
@@ -2572,8 +2645,8 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		{
 		  ftSurface* other_face = other_edge->face()->asFtSurface();
 		  int nmb_other = other_face->nmbCornerVertices(tptol.bend);
-		  if (other_face && other_face->nmbEdges() > 4 &&
-		      nmb_other > 4)
+		  if (other_face && other_face->nmbEdges() > 4-nmb_non &&
+		      nmb_other > 4-nmb_non)
 		    {
 		      cand_faces.push_back(other_face);
 		      kj++;
@@ -2588,6 +2661,21 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		{
 		  edgs.erase(edgs.begin()+kj);
 		}
+	    }
+
+	  // Check if the edges meeting in an insignificant vertex still
+	  // are relevant
+	  for (size_t kj=0; kj<same_edgs.size(); )
+	    {
+	      size_t kr;
+	      for (kr=0; kr<saved_edgs.size(); ++kr)
+		if (saved_edgs[kr].get() == same_edgs[kj].first.get() ||
+		    saved_edgs[kr].get() == same_edgs[kj].second.get())
+		  break;
+	      if (kr < saved_edgs.size())
+		same_edgs.erase(same_edgs.begin()+kj);
+	      else
+		++kj;
 	    }
 
 	  // For each candidate face, compute angles between edges in edge vertices and edge length
@@ -2609,7 +2697,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
  	    }
 	  
 	  int ix1 = -1;
-	  if (edgs.size() == 3 && curr_nmb_corner <= 5)
+	  if (edgs.size()-same_edgs.size() == 3 && curr_nmb_corner <= 5)
 	    {
 	      // Select a long edge where the tangent at an end vertex is less perpendicular to
 	      // the tangent of the adjacent edge
@@ -2690,12 +2778,14 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 			  if (corr_faces_[kr].first == perm[ix2-1])
 			    {
 			      other_ix = corr_faces_[kr].second;
-			      break;
+			      if (other_ix >= 0)
+				break;
 			    }
 			  else if (corr_faces_[kr].second == perm[ix2-1])
 			    {
 			      other_ix = corr_faces_[kr].first;
-			      break;
+			      if (other_ix >= 0)
+				break;
 			    }
 			}
 
@@ -2713,11 +2803,12 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 			    }
 			}
 		    }
-		  else if (mod_seq && edgs.size() + saved_edgs.size() == 3)
+		  else if (mod_seq && 
+			   edgs.size() + saved_edgs.size() - same_edgs.size() == 3)
 		    {
 		      // VSK 0817. Do not set extra degeneracies
-		      if (edgs.size() == 5)
-			set_deg = true;
+		      if (edgs.size()-same_edgs.size() == 5)
+			set_deg = true;  // ???
 
 		      // // Mark that creation of a degenerate surface must
 		      // // be allowed. It might be necessary to select which
@@ -2808,7 +2899,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		split_par[1] = par2;
 	    }
 
-	  if (split_edgs.size() > 0)
+	  if (split_edgs.size() > 1)
 	    {
 	      // Sort edges to get better sequence of faces for
 	      // regularization
@@ -2840,8 +2931,9 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	    }
 
 	  // Do the splitting
-	  if (ix1 >= 0 || split_edgs.size() == edgs.size() ||
-	      curr_nmb_corner > 5)
+	  if (ix1 >= 0 || split_edgs.size() == edgs.size()-same_edgs.size() ||
+	      curr_nmb_corner > 5 ||
+	      /* TEST */ (split_edgs.size() == 1 && edgs.size() != 6))
 	    {
 	      for (size_t kr=0; kr<split_edgs.size(); ++kr)
 		{
@@ -3005,9 +3097,13 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		{
 		  bool found_match = false;
 		  for (size_t kr=0; kr<corr_faces_.size(); ++kr)
-		    if (faces[corr_faces_[kr].first].get() == neighbours[kj] ||
-			faces[corr_faces_[kr].second].get() == neighbours[kj])
-		      found_match = true;
+		    {
+		      if (corr_faces_[kr].second < 0)
+			continue;
+		      if (faces[corr_faces_[kr].first].get() == neighbours[kj] ||
+			  faces[corr_faces_[kr].second].get() == neighbours[kj])
+			found_match = true;
+		    }
 		  if (!found_match)
 		    neighbours.erase(neighbours.begin()+kj);
 		  else
@@ -3065,13 +3161,15 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 
 	      // Identify corresponding face
 	      for (kr=0; kr<corr_faces_.size(); ++kr)
-		if (corr_faces_[kr].first == perm[0] ||
+		if ((corr_faces_[kr].first == perm[0] &&
+		     corr_faces_[kr].second >= 0) ||
 		    corr_faces_[kr].second == perm[0])
 		  break;
 	      if (kr < corr_faces_.size())
 		{
 		  for (int ka=ix2; ka<(int)perm.size(); ++ka)
-		    if (corr_faces_[kr].first == perm[ka] ||
+		    if ((corr_faces_[kr].first == perm[ka] &&
+			 corr_faces_[kr].second >= 0) ||
 			corr_faces_[kr].second == perm[ka])
 		      {
 			if (ka > ix2)

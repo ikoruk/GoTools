@@ -229,6 +229,10 @@ namespace Go {
     void adjustVertexPosition(shared_ptr<ParamSurface> surf, 
 			      Point& vx_pos, Point& vx_par,
 			      double tol);
+
+    void checkCornerConfig(std::vector<shared_ptr<Vertex> >& corner,
+			   shared_ptr<ftSurface>& face,
+			   double angtol);
   }
 
 }  // namespace Go

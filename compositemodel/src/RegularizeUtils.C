@@ -172,6 +172,7 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
   // The same applies to a patch with 4 corners where the given vertex
   // is not one of the corners
   vector<shared_ptr<Vertex> > corners = face->getCornerVertices(bend);
+  checkCornerConfig(corners, face, 2.0*bend);
   ftEdge* opposite=NULL;  // Pointer to edge with opposite point if set
   double opposite_dist;
   double opposite_par;
@@ -262,11 +263,24 @@ RegularizeUtils::findVertexSplit(shared_ptr<ftSurface> face,
 
   int close_idx;
   double close_dist;
-  Point close_par;
+  Point close_par, close_pt;
   getClosestBoundaryPar(face, vx, vx_cvs, vx_point, epsge, 
 			angtol, close_idx, close_dist, 
 			close_par, strong ? 0 : -1);
-  Point close_pt = face->point(close_par[0], close_par[1]);
+  if (close_idx < 0 && cand_edge)
+    {
+      double par;
+      cand_edge->closestPoint(vx_point, par, close_pt, close_dist);
+      for (close_idx=0; close_idx<(int)all_edg.size(); ++close_idx)
+	if (all_edg[close_idx].get() == cand_edge)
+	  break;
+      if (close_idx == (int)all_edg.size())
+	close_idx = -1;
+      else
+	close_par = cand_edge->faceParameter(par);
+    }
+  else
+    close_pt = face->point(close_par[0], close_par[1]);
 
   // Turn off closest point index if the edge doesn't correspond
   // to the candidate split edge
@@ -943,15 +957,16 @@ RegularizeUtils::getClosestBoundaryPar(shared_ptr<ftSurface> face,
 
   if (close_idx < 0)
     {
-      // No closest point selected. Choose a point
-      close_idx = (int)cvs.size()/2;
-      close_t = 0.5*(cvs[close_idx]->startparam() + cvs[close_idx]->endparam());
-      close_pnt = cvs[close_idx]->point(close_t);
-      double upar, vpar, dist;
-      Point close_pnt2;
-      surf->closestPoint(close_pnt, upar, vpar, close_pnt2, dist,
-			 epsge);
-      close_par = Point(upar,vpar);
+      return;
+      // // No closest point selected. Choose a point
+      // close_idx = (int)cvs.size()/2;
+      // close_t = 0.5*(cvs[close_idx]->startparam() + cvs[close_idx]->endparam());
+      // close_pnt = cvs[close_idx]->point(close_t);
+      // double upar, vpar, dist;
+      // Point close_pnt2;
+      // surf->closestPoint(close_pnt, upar, vpar, close_pnt2, dist,
+      // 			 epsge);
+      // close_par = Point(upar,vpar);
     }
 
   // Let the index reflect the face edges
@@ -3422,7 +3437,61 @@ void RegularizeUtils::adjustVertexPosition(shared_ptr<ParamSurface> surf,
   if (min_dist < tol)
     {
       // Replace vertex position and parameter
+      // First check accuracy of corner information
+      Point par_pos = surf->point(corners[min_ix].second[0], 
+				  corners[min_ix].second[1]);
+      double dist = par_pos.dist(corners[min_ix].first);
       vx_pos = corners[min_ix].first;
       vx_par = corners[min_ix].second;
     }
+}
+
+//==========================================================================
+void
+RegularizeUtils::checkCornerConfig(vector<shared_ptr<Vertex> >& corner, 
+				   shared_ptr<ftSurface>& face,
+				   double angtol)
+//==========================================================================
+{
+  // Remove corners with a relatively small angle, where only two surfaces
+  // meet and where at least one of the adjacent edges is a gap edge.
+  // Relevant for models with gaps
+  size_t kr;
+  Body *body = face->getBody();
+  for (kr=0; kr<corner.size(); )
+    {
+      // Check number of faces
+      vector<ftSurface*> faces = corner[kr]->faces(body);
+      if (faces.size() != 2)
+	{
+	  ++kr;
+	  continue;
+	}
+
+      // Check angle
+      vector<ftEdge*> edgs = corner[kr]->getEdges(face.get());
+      if (edgs.size() != 2)
+	{
+	  ++kr;
+	  continue;
+	}
+
+      Point tan1 = edgs[0]->tangent(edgs[0]->parAtVertex(corner[kr].get()));
+      Point tan2 = edgs[1]->tangent(edgs[1]->parAtVertex(corner[kr].get()));
+      double ang = tan1.angle(tan2);
+      if (ang > angtol)
+	{
+	  ++kr;
+	  continue;
+	}
+
+      // Check edge status
+      // int stat1 = edgs[0]->getConnectivityInfo()->WorstStatus();
+      // int stat2 = edgs[1]->getConnectivityInfo()->WorstStatus();
+      // if (true) //stat1 >= 3 || stat2 >= 3)
+	corner.erase(corner.begin()+kr);
+      // else
+      // 	++kr;
+    }
+
 }

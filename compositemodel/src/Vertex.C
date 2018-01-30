@@ -156,7 +156,7 @@ namespace Go
 	vertex_point_ = 0.5*(vertex_point_ + other->getVertexPoint());
 
 	// Check consistence
-	bool remove_trapped = true; //false;
+	bool remove_trapped = true; //false; 
 	if (remove_trapped)
 	  {
 	for (ki=0; ki<edges_.size(); ++ki)
@@ -240,6 +240,28 @@ namespace Go
     }
 
 //===========================================================================
+  void Vertex::updateEdgeTop(ftEdge* edge)
+//===========================================================================
+  {
+    ftEdge *twin = NULL;
+    if (edge->twin())
+      twin = edge->twin()->geomEdge();
+    for (size_t ki=0; ki<edges_.size(); ++ki)
+      {
+	if (edges_[ki].first == edge)
+	  {
+	    edges_[ki].second = twin;
+	    break;
+	  }
+	else if (edges_[ki].second == edge)
+	  {
+	    edges_[ki].first = twin;
+	    break;
+	  }
+      }
+  }
+
+//===========================================================================
     bool Vertex::hasEdge(ftEdge *edge) const
 //===========================================================================
     {
@@ -301,7 +323,7 @@ namespace Go
 
   //===========================================================================
   bool Vertex::sameEdge(Vertex* other, double angtol,
-			bool bypass_insignificant) const
+			bool bypass_insignificant, Vertex* prev) const
   //===========================================================================
   {
     for (size_t ki=0; ki<edges_.size(); ++ki)
@@ -309,6 +331,9 @@ namespace Go
 	shared_ptr<Vertex> vx = edges_[ki].first->getOtherVertex((Vertex*)this);
 	if (vx.get() == other)
 	  return true;
+
+	if (prev && vx.get() == prev)
+	  continue;
 
 	// if (edges_[ki].second)
 	//   {
@@ -331,7 +356,8 @@ namespace Go
 		  {
 		    // Don't know the orientation of the edges
 		    bool found = 
-		      vx->sameEdge(other, angtol, bypass_insignificant);
+		      vx->sameEdge(other, angtol, bypass_insignificant,
+				   (Vertex*)this);
 		    if (found)
 		      return true;
 		  }
@@ -409,11 +435,39 @@ namespace Go
 	  {
 	    shared_ptr<Vertex> vx = 
 	      edges_[ki].first->getOtherVertex((Vertex*)this);
-	    if (other->sameEdge(vx.get(), angtol, bypass_insignificant))
+	    if (other->sameEdge(vx.get(), angtol, bypass_insignificant, 
+				(Vertex*)this))
 	      return true;	
 	  }
       }
     return false;
+  }
+
+  //===========================================================================
+  shared_ptr<Vertex> Vertex::connectionVertex(Vertex* other, double angtol,
+					      bool bypass_insignificant) const
+  //===========================================================================
+  {
+    vector<ftEdge*> edges = other->uniqueEdges();
+    for (size_t ki=0; ki<edges.size(); ++ki)
+      {
+	shared_ptr<Vertex> vx = edges[ki]->getOtherVertex(other);
+	if (sameEdge(vx.get(), angtol, bypass_insignificant))
+	  return vx;
+     }
+
+    if (bypass_insignificant)
+      {
+	for (size_t ki=0; ki<edges_.size(); ++ki)
+	  {
+	    shared_ptr<Vertex> vx = 
+	      edges_[ki].first->getOtherVertex((Vertex*)this);
+	    if (other->sameEdge(vx.get(), angtol, bypass_insignificant))
+	      return vx;	
+	  }
+      }
+    shared_ptr<Vertex> dummy;
+    return dummy;
   }
 
   //===========================================================================
@@ -733,7 +787,7 @@ namespace Go
 	{
 	  if (edges_[ki].first->face() == face)
 	    result.push_back(edges_[ki].first);
-	  if (edges_[ki].second->face() == face)
+	  if (edges_[ki].second && edges_[ki].second->face() == face)
 	    result.push_back(edges_[ki].second);
 	}
       return result;

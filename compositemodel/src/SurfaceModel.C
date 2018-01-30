@@ -1665,9 +1665,10 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 
     if (face->twin())
       face->disconnectTwin();
+
+    faces_.erase(faces_.begin()+idx);
     FaceAdjacency<ftEdgeBase,ftFaceBase> adjacency(toptol_);
     adjacency.releaseFaceAdjacency(face);
-    faces_.erase(faces_.begin()+idx);
 
     if (faces_.size() > 0)
       initializeCelldiv();
@@ -1679,6 +1680,39 @@ void SurfaceModel::swapFaces(int idx1, int idx2)
 #endif
 
     return true;
+  }
+
+  //===========================================================================
+  bool SurfaceModel::replaceFace(shared_ptr<ftSurface> old_face,
+				shared_ptr<ftSurface> face)
+  //===========================================================================
+  {
+    int idx = getIndex(old_face);
+    if (idx < 0 || idx >= (int)faces_.size())
+      return false;
+
+    ftSurface *twin = NULL;
+    if (face->twin())
+      {
+	twin = face->twin();
+	face->disconnectTwin();
+      }
+    
+    FaceAdjacency<ftEdgeBase,ftFaceBase> adjacency(toptol_);
+    bool replaced = adjacency.replaceFace(old_face, face);
+    if (replaced)
+      {
+	faces_.erase(faces_.begin()+idx);
+	faces_.push_back(face);
+      }
+
+    if (twin)
+      face->setTwin(twin);
+
+    if (replaced && faces_.size() > 0)
+      initializeCelldiv();
+
+    return replaced;
   }
 
   //===========================================================================
@@ -4956,7 +4990,7 @@ shared_ptr<SplineSurface> SurfaceModel::approxFaceSet(double& error, int degree)
   // // parameterization
   // triang->checkAndUpdateTriangCorners();
   shared_ptr<ftPointSet> triang = shared_ptr<ftPointSet>(new ftPointSet()); 
-  vector<shared_ptr<ftSurface> > faces;
+  vector<shared_ptr<ftSurface> > faces = allFaces();
   SurfaceModelUtils::triangulateFaces(faces, triang, toptol_.gap);
 
   // Fetch outer boundary

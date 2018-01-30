@@ -3099,7 +3099,7 @@ Point BoundedSurface::getSurfaceParameter(int loop_idx, int cv_idx,
   shared_ptr<ParamCurve> cv = (*boundary_loops_[loop_idx])[cv_idx];
   shared_ptr<CurveOnSurface> sf_cv = 
     dynamic_pointer_cast<CurveOnSurface, ParamCurve>(cv);
-  if (sf_cv.get())
+  if (sf_cv.get() && sf_cv->parPref())
     {
       shared_ptr<ParamCurve> pcrv = sf_cv->parameterCurve();
       if (pcrv)

@@ -227,7 +227,11 @@ namespace BoundedUtils {
 		     std::vector< shared_ptr< CurveOnSurface > >&
 		     part_bnd_cvs, double eps, int last_split=-1);
 
-    /// Help function for getBoundaryLoops
+    /// Help function for getBoundaryLoops (few sample)
+    int checkCurveCoinc(shared_ptr<ParamCurve> cv1, 
+			shared_ptr<ParamCurve> cv2, double tol);
+      
+    /// Help function for getBoundaryLoops (few sample)
     int checkCurveCoincidence(shared_ptr<CurveOnSurface> cv1, 
 			      shared_ptr<CurveOnSurface> cv2, 
 			      double tol, bool same_orient);

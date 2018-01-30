@@ -505,6 +505,13 @@ class GO_API SurfaceModel : public CompositeModel
   /// \return Whether the face was removed
   bool removeFace(shared_ptr<ftSurface> face);
 
+  /// Replace one face in the face set
+  /// \param old_face Pointer to the face to be removed
+  /// \param face Pointer to the new face 
+  /// \return Whether the replacement took place
+  bool replaceFace(shared_ptr<ftSurface> old_face,
+		   shared_ptr<ftSurface> face);
+
   /// Update neighbourhood information related to face
   /// \param face Pointer to the face
   void updateFaceTopology(shared_ptr<ftSurface> face);

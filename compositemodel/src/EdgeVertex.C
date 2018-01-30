@@ -384,6 +384,28 @@ namespace Go
   }
 
 //===========================================================================
+  void EdgeVertex::updateEdgeInfo(ftEdge *edge)
+//===========================================================================
+  {
+    ftEdge *twin = NULL;
+    if (edge->twin())
+      twin = edge->twin()->geomEdge();
+    for (size_t ki=0; ki<edges_.size(); ++ki)
+      {
+	if (edges_[ki].first == edge)
+	  {
+	    edges_[ki].second = twin;
+	    break;
+	  }
+	else if (edges_[ki].second == edge)
+	  {
+	    edges_[ki].first = twin;
+	    break;
+	  }
+      }
+  }
+
+//===========================================================================
   void EdgeVertex::organizeTwins()
 //===========================================================================
   {

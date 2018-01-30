@@ -67,7 +67,8 @@
 
 // #ifndef NDEBUG
 // #ifndef DEBUG
-//#define DEBUG
+// #define DEBUG
+//#define DEBUG_ADAPT
 // #endif // DEBUG
 // #endif // NDEBUG
 

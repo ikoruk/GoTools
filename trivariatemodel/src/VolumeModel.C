@@ -51,7 +51,7 @@
 #include <fstream>
 
 //#define DEBUG
-//#define DEBUG_VOL2
+#define DEBUG_VOL2
 
 using namespace Go;
 using std::vector;

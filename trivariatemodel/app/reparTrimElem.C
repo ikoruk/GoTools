@@ -269,6 +269,16 @@ int main( int argc, char* argv[] )
 	      if (sub_elem[kj]->getOuterShell()->nmbBoundaries() > 0)
 		{
 		  std::cout << "Open shell. Check" << std::endl;
+		  vector<shared_ptr<ftEdge> > bd_edgs = 
+		    sub_elem[kj]->getOuterShell()->getBoundaryEdges();
+		  std::ofstream of_bd("tmp9_bd.g2");
+		  for (size_t kr=0; kr<bd_edgs.size(); ++kr)
+		    {
+		      shared_ptr<ParamCurve> tmp_cv = bd_edgs[kr]->geomCurve();
+		      shared_ptr<ParamCurve> tmp_cv2(tmp_cv->geometryCurve());
+		      tmp_cv2->writeStandardHeader(of_bd);
+		      tmp_cv2->write(of_bd);
+		    }
 		  continue;  
 		}
 

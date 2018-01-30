@@ -431,6 +431,11 @@ namespace Go
     bool identifyDegCorner(std::vector<shared_ptr<ParamSurface> >& sfs,
 			   std::vector<int>& deg_type, Point& deg_pt);
 
+    bool identifyDegCorner2(std::vector<shared_ptr<ParamSurface> >& sfs, 
+			    std::vector<int>& deg_type,
+			    std::vector<shared_ptr<ParamCurve> >& bd_cvs,
+			    Point& deg_pt);
+
     void getCoonsBdCurves(std::vector<std::pair<shared_ptr<ParamCurve>,shared_ptr<ParamCurve> > >& cvs,
 			  std::vector<int>& indices,
 			  std::vector<std::pair<int,double> >& classification,

@@ -3056,7 +3056,7 @@ void CurveOnSurface::pickParamPoint(vector<Point>& par_candidates,
     for (size_t ki = 0; ki < par_candidates.size(); ++ki)
     {
 	Point pt = surface_->point(par_candidates[ki][0], par_candidates[ki][1]);
-	Point sf_pt2 = surface_->point(par_candidates[1][0], par_candidates[1][1]);
+	//Point sf_pt2 = surface_->point(par_candidates[1][0], par_candidates[1][1]);
 	if (sf_pt.dist(pt) > epsgeo)
 	{
 	    par_candidates.erase(par_candidates.begin() + ki);
