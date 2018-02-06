@@ -46,7 +46,7 @@
 #include <iterator>
 #include <fstream>
 
-#define DEBUG
+//#define DEBUG
 
 using namespace Go;
 using std::vector;

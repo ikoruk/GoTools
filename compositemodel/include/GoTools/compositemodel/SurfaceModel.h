@@ -690,7 +690,7 @@ class GO_API SurfaceModel : public CompositeModel
   /** Return information about all G1 discontinuities. */
   ftCurve getG1Disconts();
 
-  /** Information about kinks on an alternative format */
+  /** Information about G1 discontinuities on an alternative format */
   void getCorners(std::vector<ftEdge*>& corners);
 
   /** Return single surface */

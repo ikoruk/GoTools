@@ -52,7 +52,7 @@
 #include <fstream>
 #include <cstdlib>
 
-#define DEBUG_REG
+//#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -2580,7 +2580,9 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	  if (kj == corr_faces_.size())
 	    {
 	      int nmb_corner = faces[ki]->nmbCornerVertices(tptol.bend);
-	      if (nmb_corner != 4)
+	      vector<shared_ptr<Vertex> > Tvx = 
+		getTjointVertices(faces[ki], tptol.bend);
+	      if (nmb_corner+(int)Tvx.size() != 4 /*nmb_corner != 4*/)
 		{
 		  curr_face = faces[ki];
 		  nmb_found++;
@@ -2604,7 +2606,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	  (curr_nmb_corner == 3 || curr_nmb_corner == 5 ||
 	   (curr_nmb_corner == 6 && 
 	    (cone.greaterThanPi() == 1 ||
-	     cone.angle() > model_->getTolerances().bend))))
+	     cone.angle() > tptol.bend))))
 	{
 	  // Special case found. Define new vertex to guide splitting
 	  // Select edge and associated face
@@ -2612,7 +2614,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	  vector<pair<shared_ptr<ftEdge>,shared_ptr<ftEdge> > > same_edgs;
 	  if (edgs.size() > curr_nmb_corner)
 	    {
-	      double angtol = model_->getTolerances().bend;
+	      double angtol = tptol.bend;
 	      for (size_t kj=0; kj<edgs.size(); ++kj)
 		for (size_t kr=kj+1; kr<edgs.size(); ++kr)
 		  {
@@ -2634,7 +2636,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	  // faces
 	  int nmb_non = 2*(int)corr_faces_.size() - nmb_corr_faces;
 	  vector<shared_ptr<Vertex> > corners = 
-	    curr_face->getCornerVertices(model_->getTolerances().bend);
+	    curr_face->getCornerVertices(tptol.bend);
 	  vector<shared_ptr<ftEdge> > saved_edgs;
  
 	  vector<ftSurface*> cand_faces;
@@ -2662,6 +2664,16 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		  edgs.erase(edgs.begin()+kj);
 		}
 	    }
+
+#ifdef DEBUG_REG
+	  std::ofstream of_edg("sel_edgs.g2");
+	  for (size_t kj=0; kj<edgs.size(); ++kj)
+	    {
+	      shared_ptr<SplineCurve> tmp_cv(edgs[kj]->geomCurve()->geometryCurve());
+	      tmp_cv->writeStandardHeader(of_edg);
+	      tmp_cv->write(of_edg);
+	    }
+#endif
 
 	  // Check if the edges meeting in an insignificant vertex still
 	  // are relevant
@@ -2697,12 +2709,13 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
  	    }
 	  
 	  int ix1 = -1;
-	  if (edgs.size()-same_edgs.size() == 3 && curr_nmb_corner <= 5)
+	  //if (edgs.size()-same_edgs.size() == 3 && curr_nmb_corner <= 5)
+	  if (edgs.size()-same_edgs.size() == 3 && curr_nmb_corner < 5)
 	    {
 	      // Select a long edge where the tangent at an end vertex is less perpendicular to
 	      // the tangent of the adjacent edge
-	      double bend = model_->getTolerances().bend;
-	      double tol = model_->getTolerances().neighbour;
+	      double bend = tptol.bend;
+	      double tol = tptol.neighbour;
 	      double minlen = 10.0*tol;
 	      ix1 = 0;
 	      for (size_t kj=1; kj<edgs.size(); ++kj)
@@ -2739,7 +2752,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		  double mincur;
 		  Point dir;
 		  bool linear = 
-		    cv2->isLinear(dir, model_->getTolerances().bend); //model_->getTolerances().kink);
+		    cv2->isLinear(dir, tptol.bend); //model_->getTolerances().kink);
 		  bool found;
 		  if (linear)
 		    found = false;
@@ -2931,9 +2944,25 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	    }
 
 	  // Do the splitting
-	  if (ix1 >= 0 || split_edgs.size() == edgs.size()-same_edgs.size() ||
-	      curr_nmb_corner > 5 ||
-	      /* TEST */ (split_edgs.size() == 1 && edgs.size() != 6))
+	  bool do_split = (ix1 >= 0 || 
+			   split_edgs.size() == edgs.size()-same_edgs.size() ||
+			   curr_nmb_corner > 5);
+// 	  if ((!do_split) && split_edgs.size() == 1 && edgs.size() != 6)
+// 	    {
+// 	      shared_ptr<Vertex> v1, v2;
+// 	      split_edgs[0]->getVertices(v1, v2);
+// 	      bool is_corner1 = v1->isCornerInFace(curr_face.get(), tptol.bend);
+// 	      bool is_corner2 = v2->isCornerInFace(curr_face.get(), tptol.bend);
+// 	      do_split = true;
+// 	      int stop_break = 1;
+// 	    }
+// #ifdef DEBUG_REG
+// 	  if (!do_split)
+// 	    std::cout << "Nmb split edges: " << split_edgs.size() << ", false" << std::endl;
+// #endif	  
+	  if (/*split_edgs.size() == 1 ||*/ split_edgs.size() == 2)
+	    do_split = true;
+	  if (do_split)
 	    {
 	      for (size_t kr=0; kr<split_edgs.size(); ++kr)
 		{
@@ -3091,6 +3120,10 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 	      // Let the triangular surface have first priority, 
 	      // adjacent faces in a correspondance relation come next,
 	      // then the opposite surface to the triangular one.
+	      // First unset degeneracy flags to let only the first one
+	      // selected apply
+	      std::fill(allow_deg.begin(), allow_deg.end(), 0);
+
 	      vector<ftSurface*> neighbours;
 	      faces[perm[first_tri]]->getAdjacentFaces(neighbours);
 	      for (size_t kj=0; kj<neighbours.size();)
@@ -3167,6 +3200,11 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
 		  break;
 	      if (kr < corr_faces_.size())
 		{
+		  if (corr_faces_[kr].first == perm[0])
+		    allow_deg[corr_faces_[kr].second] = 1;
+		  else
+		    allow_deg[corr_faces_[kr].first] = 1;
+
 		  for (int ka=ix2; ka<(int)perm.size(); ++ka)
 		    if ((corr_faces_[kr].first == perm[ka] &&
 			 corr_faces_[kr].second >= 0) ||
@@ -3224,7 +3262,7 @@ RegularizeFaceSet::defineSplitVx(vector<shared_ptr<ftSurface> >& faces,
       // Prioritize faces with more than 4 corners that have concave
       // corners
       int ix = 0;
-      double angtol = model_->getTolerances().bend;
+      double angtol = tptol.bend;
       for (size_t ki=0; ki<faces.size(); ++ki)
 	{
 	  vector<shared_ptr<Vertex> > corners = 

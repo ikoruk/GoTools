@@ -37,7 +37,7 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-#define DEBUG_REG
+//#define DEBUG_REG
 
 #include "GoTools/compositemodel/RegularizeUtils.h"
 #include "GoTools/compositemodel/Body.h"
@@ -2186,10 +2186,53 @@ RegularizeUtils::checkTrimSeg(vector<shared_ptr<CurveOnSurface> >& trim_segments
       // Remove also segments going through an adjacent vertex
 //==========================================================================
 {
+  double a_tol = std::min(1.0e-6, 0.01*epsge);
   for (size_t kr=0; kr<trim_segments.size(); )
     {
-      Point pos1 = trim_segments[kr]->ParamCurve::point(trim_segments[kr]->startparam());
-      Point pos2 = trim_segments[kr]->ParamCurve::point(trim_segments[kr]->endparam());
+      double t1 = trim_segments[kr]->startparam();
+      double t2 = trim_segments[kr]->endparam();
+      Point pos1 = trim_segments[kr]->ParamCurve::point(t1);
+      Point pos2 = trim_segments[kr]->ParamCurve::point(t2);
+      Point pos3, pos4;
+      double t3, t4, d3, d4 = HUGE;
+      trim_segments[kr]->closestPoint(vx_point, t1, t2, t3, pos3, d3);
+      if (other_pt.dimension() == vx_point.dimension())
+	trim_segments[kr]->closestPoint(other_pt, t1, t2, t4, pos4, d4);
+      
+      if (d3 < epsge && 
+	  d3 < std::min(pos1.dist(vx_point), pos2.dist(vx_point))-a_tol)
+	{
+	  // Reduce curve length
+	  double ta = (t3 - t1 < t2 - t3) ? t3 : t1;
+	  double tb = (t3 - t1 < t2 - t3) ? t2 : t3;
+	  trim_segments[kr] = 
+	    shared_ptr<CurveOnSurface>(trim_segments[kr]->subCurve(ta, tb));
+	  if (t3 - t1 < t2 - t3)
+	    {
+	      t1 = t3;
+	      pos1 = pos3;
+	    }
+	  else
+	    {
+	      t2 = t3;
+	      pos2 = pos3;
+	    }
+	}
+
+      if (d4 < epsge && 
+	  d4 < std::min(pos1.dist(other_pt), pos2.dist(other_pt))-a_tol)
+	{
+	  // Reduce curve length
+	  double ta = (t4 - t1 < t2 - t4) ? t4 : t1;
+	  double tb = (t4 - t1 < t2 - t4) ? t2 : t4;
+	  trim_segments[kr] = 
+	    shared_ptr<CurveOnSurface>(trim_segments[kr]->subCurve(ta, tb));
+	  if (t4 - t1 < t2 - t4)
+	    pos1 = pos3;
+	  else
+	    pos2 = pos3;
+	}
+
       if (pos1.dist(vx_point) > epsge && pos2.dist(vx_point) > epsge)
 	trim_segments.erase(trim_segments.begin()+kr);
       else if (other_pt.dimension() == vx_point.dimension() &&

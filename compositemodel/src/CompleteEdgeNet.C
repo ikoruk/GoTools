@@ -1047,7 +1047,7 @@ bool CompleteEdgeNet::regularizeCurrLoop(vector<ftEdge*>& edges,
   double min_ang2 = MAXDOUBLE;
   double min_ang4 = MAXDOUBLE;
   double min_dist = MAXDOUBLE;
-  double ang_tol = model_->getTolerances().kink;
+  double ang_tol = tptol.kink;
   double dist_fac = 10.0;
   // if (false /*vxs.size() > edges.size()*/)
   //   {
@@ -1093,6 +1093,14 @@ bool CompleteEdgeNet::regularizeCurrLoop(vector<ftEdge*>& edges,
       kj = kj % (int)vxs2.size();
       kr = kr % (int)vxs2.size();
       kh = kh % (int)vxs2.size();
+
+#ifdef DEBUG
+      std::ofstream of_cand("cand_conn_vx.g2");
+      of_cand << "400 1 0 4 0 55 200 255" << std::endl;
+      of_cand << "1" << std::endl;
+      of_cand << vxs[ki]->getVertexPoint() << std::endl;
+	
+#endif
 
       // Check if there exists identified missing edges in the loop,
       // in that case the candidate must belong to such an edge
@@ -1333,7 +1341,9 @@ bool CompleteEdgeNet::regularizeCurrLoop(vector<ftEdge*>& edges,
 	  int kj2 = (kj+1)%(int)vxs2.size();
 	  Point v2 = vxs2[kj2] - vxs2[ki2];
 	  double proj_angle = prev_proj_vec.angle(v1) + v1.angle(v2);
-	  if (proj_angle > 0.2*M_PI)
+	  double prev_proj_angle = prev_proj_vec.angle(v2);
+	  if (proj_angle > 0.2*M_PI && 
+	      proj_angle > prev_proj_angle + tptol.bend)
 	    kr = 0;   // Too large angular difference between adjacent
 	  // connections. Treat loop recursively
 	}

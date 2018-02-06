@@ -58,7 +58,7 @@
 #include <fstream>
 #include <cstdlib>
 
-#define DEBUG_REG
+//#define DEBUG_REG
 
 using std::vector;
 using std::set;
@@ -9815,10 +9815,26 @@ RegularizeFace::applyNextLevel(vector<shared_ptr<ftSurface> >& new_faces)
       for (size_t kj=0; kj<new_faces.size(); ++kj)
 	new_faces[kj]->setBoundaryConditions(bd_type, bd);
     }
+
+  bool isOK1 = model_->checkShellTopology();
+#ifdef DEBUG_REG
+  if (!isOK1)
+    std::cout << "applyNextLevel: check shell topology 1. Not OK" << std::endl;
+#endif
   
   model_->removeFace(face_);
+  bool isOK2 = model_->checkShellTopology();
+#ifdef DEBUG_REG
+  if (!isOK2)
+    std::cout << "applyNextLevel: check shell topology 2. Not OK" << std::endl;
+#endif
   model_->append(new_faces, false, false);
   int nmb_faces = (int)new_faces.size();
+  bool isOK3 = model_->checkShellTopology();
+#ifdef DEBUG_REG
+  if (!isOK3)
+    std::cout << "applyNextLevel: check shell topology 3. Not OK" << std::endl;
+#endif
 
   curr_rec_++;
   if (max_rec_ >= 0 && curr_rec_ >= max_rec_)

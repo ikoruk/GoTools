@@ -37,8 +37,8 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-#define DEBUG_VOL1
-#define DEBUG
+//#define DEBUG_VOL1
+//#define DEBUG
 
 #include "GoTools/trivariatemodel/ftVolume.h"
 #include "GoTools/trivariatemodel/ftVolumeTools.h"
@@ -10992,29 +10992,66 @@ void ftVolume::mergeSmoothJoints(int degree)
   vector<shared_ptr<ftSurface> > faces = model->allFaces();
   connectivity.smoothEdges(faces, vec, bend);
   
+#ifdef DEBUG
+      if (vec.size() > 0)
+	{
+	  std::ofstream edgof0("sortedvec0.g2");
+	  for (size_t ki=0; ki<vec.size(); ++ki)
+	    {
+	      shared_ptr<ParamCurve> cv = vec[ki]->geomEdge()->geomCurve();
+	      shared_ptr<CurveOnSurface> sf_cv =
+		dynamic_pointer_cast<CurveOnSurface,ParamCurve>(cv);
+	      if (sf_cv.get())
+		cv = sf_cv->spaceCurve();
+	      cv->writeStandardHeader(edgof0);
+	      cv->write(edgof0);
+	    }
+	}
+#endif
+
   // Group connected edges
   vector<int> grp_ix;
-  int ki, kj;
+  int ki, kj, kr, kh;
   grp_ix.push_back(0);
-  for (ki=0; ki<(int)vec.size(); ki=grp_ix[grp_ix.size()-1])
+  for (ki=0, kr=0; ki<(int)vec.size(); kr=(int)grp_ix.size()-1, ki=grp_ix[kr])
     {
       grp_ix.push_back(ki+1);
-      ftEdge* edg1 = vec[ki]->geomEdge();
       for (kj=ki+1; kj<(int)vec.size(); ++kj)
 	{
 	  ftEdge *edg2 = vec[kj]->geomEdge();
-	  if (edg1->commonVertex(edg2))
+	  for (kh=grp_ix[kr]; kh<grp_ix[kr+1]; ++kh)
 	    {
-	      if (kj > grp_ix[grp_ix.size()-1])
-		std::swap(vec[grp_ix.size()-1], vec[kj]);
-	      grp_ix[grp_ix.size()-1]++;
+	      ftEdge* edg1 = vec[kh]->geomEdge();
+	      if (edg1->commonVertex(edg2))
+		{
+		  int ka = grp_ix[grp_ix.size()-1];
+		  if (kj > ka)
+		    std::swap(vec[ka], vec[kj]);
+		  grp_ix[grp_ix.size()-1]++;
+		  break;
+		}
 	    }
-	  else
-	    ++kj;
 	}
     }
   if (grp_ix[grp_ix.size()-1] < (int)vec.size())
     grp_ix.push_back((int)vec.size());
+
+#ifdef DEBUG
+      if (vec.size() > 0)
+	{
+	  std::ofstream edgof("sortedvec.g2");
+	  for (size_t ki=0; ki<vec.size(); ++ki)
+	    {
+	      shared_ptr<ParamCurve> cv = vec[ki]->geomEdge()->geomCurve();
+	      shared_ptr<CurveOnSurface> sf_cv =
+		dynamic_pointer_cast<CurveOnSurface,ParamCurve>(cv);
+	      if (sf_cv.get())
+		cv = sf_cv->spaceCurve();
+	      cv->writeStandardHeader(edgof);
+	      cv->write(edgof);
+	    }
+	}
+#endif
 
   // For each edge group, assemble adjacent faces
   tpTolerances toptol = model->getTolerances();
@@ -11091,28 +11128,36 @@ void ftVolume::mergeSmoothJoints(int degree)
 	  grp_sfs[kr]->write(of);
 	}
 #endif
-      double dist;
-      shared_ptr<ParamSurface> approx_surf;
-      try {
-	approx_surf = grp_model->representAsOneSurface(dist);
-      }
-      catch (...)
+      // Check for sharp edges
+      vector<ftEdge*> corners;
+      grp_model->getCorners(corners);
+      if (corners.size() == 0)
 	{
+	  // Continue with the merge
+
+	  double dist;
+	  shared_ptr<ParamSurface> approx_surf;
+	  try {
+	    approx_surf = grp_model->representAsOneSurface(dist);
+	  }
+	  catch (...)
+	    {
+	      if (approx_surf.get())
+		approx_surf.reset();
+	    }
 	  if (approx_surf.get())
-	    approx_surf.reset();
-	}
-      if (approx_surf.get())
-	{
-	  // Replace surface
-	  shared_ptr<ftSurface> new_face(new ftSurface(approx_surf,-1));
-	  (void)new_face->createInitialEdges(toptol.gap, toptol.kink);
-	  for (size_t kr=0; kr<grp_faces.size(); ++kr)
-	    model->removeFace(grp_faces[kr]);
-	  new_face->setBody(bd);
-	  model->append(new_face);
+	    {
+	      // Replace surface
+	      shared_ptr<ftSurface> new_face(new ftSurface(approx_surf,-1));
+	      (void)new_face->createInitialEdges(toptol.gap, toptol.kink);
+	      for (size_t kr=0; kr<grp_faces.size(); ++kr)
+		model->removeFace(grp_faces[kr]);
+	      new_face->setBody(bd);
+	      model->append(new_face);
+	    }
 	}
     }
-     int stop_break = 1;
+  int stop_break = 1;
 }
 
 

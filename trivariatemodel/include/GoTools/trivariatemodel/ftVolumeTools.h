@@ -43,6 +43,7 @@
 #include <vector>
 #include <memory>
 #include "GoTools/utils/config.h"
+#include "GoTools/utils/Point.h"
 
 namespace Go
 {
@@ -140,7 +141,10 @@ namespace Go
     /// Used from splitElement. Not an independent function
     bool
       checkIntCrvJoint(std::vector<shared_ptr<CurveOnSurface> > & int_cvs,
-		       double tol, double eps);
+		       double tol, double eps, double angtol);
+
+    double getEndPtDist(std::vector<shared_ptr<CurveOnSurface> > & int_cvs,
+			size_t ix1, size_t ix2, Point pos);
 
     void checkIntCvCoincidence(shared_ptr<CurveOnSurface> *project_cvs,
 			       int nmb_project_cvs,

@@ -33391,7 +33391,6 @@ void sh1762_s9subdivpt (SISLObject * po1, SISLObject * po2, double aepsge,
 		
 		//if (ang2 > 1.0e-4 && ang2 < 0.1*ANGULAR_TOLERANCE)
 		  kf1--;
-		printf("\n Dir 1:, [%g, %g], %g, %g\n",sstart[0],send[0],spar[0],ang2);
 	      }
 	  }
 	if ((*pintdat)->ipoint > 1 && kf2 > 0 && qo2->iobj == SISLSURFACE)
@@ -33414,7 +33413,6 @@ void sh1762_s9subdivpt (SISLObject * po1, SISLObject * po2, double aepsge,
 		
 		//if (ang1 > 1.0e-4 && ang1 < 0.1*ANGULAR_TOLERANCE)
 		  kf2--;
-		printf("\n Dir 2:, [%g, %g], %g, %g\n",sstart[1],send[1],spar[1],ang1);
 	      }
 	  }
 	if (kf1 == 0 || kf2 == 0)
