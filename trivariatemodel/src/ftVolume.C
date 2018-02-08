@@ -4285,6 +4285,32 @@ ftVolume::sortRegularSurfaces(vector<shared_ptr<ParamSurface> >& sorted_sfs,
 		    }
 		}
 	    }
+	  // Select the position of the surface that degenerate to a point. 
+	  // Compute size of opposite surface
+	  vector<double> opposite_size;
+	  vector<int> deg_sfix;
+	  for (kj=0; kj<sorted_sfs.size(); kj+=2)
+	    {
+	      if (deg_type[kj] == 2 && sorted_sfs[kj+1].get())
+		{
+		  double usize, vsize;
+		  sorted_sfs[kj+1]->estimateSfSize(usize, vsize);
+		  opposite_size.push_back(usize*vsize);
+		  deg_sfix.push_back((int)kj);
+		}
+	      else if (deg_type[kj+1] == 2 && sorted_sfs[kj].get())
+		{
+		  double usize, vsize;
+		  sorted_sfs[kj]->estimateSfSize(usize, vsize);
+		  opposite_size.push_back(usize*vsize);
+		  deg_sfix.push_back((int)kj+1);
+		}
+	    }
+
+	  if (deg_sfix.size() == 2)
+	    {
+	      deg_type[(opposite_size[0] <= opposite_size[1]) ? deg_sfix[0] : deg_sfix[1]] = 3;
+	    }
 	}
       else
 	MESSAGE("Surface sorting configuration not handled");
@@ -4772,7 +4798,7 @@ ftVolume::createByCoons(vector<shared_ptr<ParamSurface> >& sfs,
   vector<vector<pair<shared_ptr<ParamCurve>, shared_ptr<ParamCurve> > > > cvs;
   vector<vector<int> > indices;
   double cvfac = 1.0; //7.5; //15.0;
-  bool found = getCoonsCurvePairs(sfs, deg_pt, cvs, indices);
+  bool found = getCoonsCurvePairs(sfs, deg_type, deg_pt, cvs, indices);
   if (!found)
     return result;
 
@@ -5269,8 +5295,14 @@ ftVolume::identifyDegCorner(vector<shared_ptr<ParamSurface> >& sfs,
       // Find the parameter direction where 2 surfaces are defined
       int pardir;
       for (pardir=0; pardir<3; ++pardir)
-	if (sfs[2*pardir].get() && sfs[2*pardir+1].get())
-	  break;
+	{
+	  int kj;
+	  for (kj=0; kj<4; ++kj)
+	    if (deg_type[surf_ix[pardir][kj]] == 3 /* Surface degenerate to point */)
+	      break;
+	  if (kj == 4)
+	    break;
+	}
 
       // The side surfaces corresponding to the identified parameter
       // direction will have one common corner point. Find this point
@@ -5854,7 +5886,7 @@ ftVolume::getCoonsBdCurves(vector<pair<shared_ptr<ParamCurve>,shared_ptr<ParamCu
 //===========================================================================
 bool
 ftVolume::getCoonsCurvePairs(vector<shared_ptr<ParamSurface> >& sfs, 
-			     Point& deg_pt,
+			     vector<int>& deg_type, Point& deg_pt,
 			     vector<vector<pair<shared_ptr<ParamCurve>, 
 			     shared_ptr<ParamCurve> > > >& curves,
 			     vector<vector<int> >& indices)
@@ -5877,6 +5909,9 @@ ftVolume::getCoonsCurvePairs(vector<shared_ptr<ParamSurface> >& sfs,
   for (size_t kf=0; kf<vx.size(); ++kf)
     incoons << vx[kf]->getVertexPoint() << std::endl;
 #endif
+
+  // Inidices of side surface for each parameter direction
+  int surf_ix[3][4] = {{0, 2, 1, 3}, {1, 5, 0, 4}, {2, 4, 3, 5}};
 
   int nopt_dir = -1;
   double deg_tol = toptol_.neighbour;
@@ -5916,16 +5951,21 @@ ftVolume::getCoonsCurvePairs(vector<shared_ptr<ParamSurface> >& sfs,
       if (nmb_sfs == 4)
 	{
 	  for (nopt_dir=0; nopt_dir<3; ++nopt_dir)
-	    if (sfs[2*nopt_dir].get() && sfs[2*nopt_dir+1].get())
-	      break;
+	    {
+	      int ka;
+	      for (ka=0; ka<4; ++ka)
+		if (deg_type[surf_ix[nopt_dir][ka]] == 3 /* Surface degenerate to point */)
+		  break;
+
+	      if (ka == 4)
+		break;
+	    }
 	}
     }
 
   // For each volumetric parameter directions
   int ki, kj;
   int pardir;
-  // Inidices of side surface for each parameter direction
-  int surf_ix[3][4] = {{0, 2, 1, 3}, {1, 5, 0, 4}, {2, 4, 3, 5}};
   int idx;
   int use_curve = 0;  // 0 = both curves, 1 = first, 2 = second
   shared_ptr<ParamCurve> dummy;

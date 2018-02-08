@@ -424,7 +424,7 @@ namespace Go
 
     bool
       getCoonsCurvePairs(std::vector<shared_ptr<ParamSurface> >& sfs, 
-			 Point& deg_pt,
+			 std::vector<int>& deg_type, Point& deg_pt,
 			 std::vector<std::vector<std::pair<shared_ptr<ParamCurve>,shared_ptr<ParamCurve> > > >& curves,
 			 std::vector<std::vector<int> >& indices);
 
