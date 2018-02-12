@@ -37,8 +37,8 @@
  * written agreement between you and SINTEF ICT. 
  */
 
-//#define DEBUG_VOL
-//#define DEBUG
+#define DEBUG_VOL
+#define DEBUG
 
 #include "GoTools/trivariatemodel/ftVolumeTools.h"
 #include "GoTools/trivariatemodel/ftVolume.h"
@@ -1539,6 +1539,7 @@ ftVolumeTools::splitWithSplitSf(ftVolume* vol, shared_ptr<ParamSurface> surf,
       int nmb = shells[ki]->nmbEntities();
       for (int kj=0; kj<nmb; ++kj, ++ix)
 	{
+	  int nmb_prev1 = (int)all_int_cvs1[0].size();
 	  shared_ptr<ftSurface> curr_face = shells[ki]->getFace(kj);
 	  shared_ptr<ParamSurface> surf2 = curr_face->surface();
 	  faces.push_back(curr_face);
@@ -1587,12 +1588,15 @@ ftVolumeTools::splitWithSplitSf(ftVolume* vol, shared_ptr<ParamSurface> surf,
 									crv,
 									false));
 		      cv2->ensureSpaceCrvExistence(eps);
-		      all_int_cvs1[ix].push_back(cv2);
+		      all_int_cvs2[ix].push_back(cv2);
 		    }
 		}
 	    }
-	  else
-	    {
+	  // else
+	  //   {
+	  int nmb_preknown1 = (int)all_int_cvs1[0].size() - nmb_prev1;
+	  int nmb_preknown2 = (int)all_int_cvs2[ix].size();
+
 	      // Perform intersection
 	      BoundingBox box2 = surf2->boundingBox();
 #ifdef DEBUG
@@ -1613,17 +1617,38 @@ ftVolumeTools::splitWithSplitSf(ftVolume* vol, shared_ptr<ParamSurface> surf,
 							int_cv2, bd2);
 		  sfs1[0] = bd1;
 		  sfs2[ix] = bd2;
+		  if (int_cv1.size() > 0 && nmb_preknown1 > 0)
+		    {
+		      // Remove intersection curves that are coincident with
+		      // already found projection curves
+		      vector<shared_ptr<CurveOnSurface> > dummy;
+		      checkIntCvCoincidence(&all_int_cvs1[0][nmb_prev1], nmb_preknown1,
+					    toptol.neighbour, toptol.gap,
+					    int_cv1, dummy);
+		    }
+		  if (int_cv2.size() > 0 && nmb_preknown2 > 0)
+		    {
+		      // Remove intersection curves that are coincident with
+		      // already found projection curves
+		      vector<shared_ptr<CurveOnSurface> > dummy;
+		      checkIntCvCoincidence(&all_int_cvs2[ix][0], nmb_preknown2,
+					    toptol.neighbour, toptol.gap,
+					    int_cv2, dummy);
+		    }
 		  if (int_cv1.size() > 0)
 		    {
-		      all_int_cvs1[0].insert(all_int_cvs1[ki].end(), 
+		      all_int_cvs1[0].insert(all_int_cvs1[0].end(), 
 					     int_cv1.begin(), int_cv1.end());
-		      all_int_cvs2[ix].insert(all_int_cvs2[kj].end(), 
+		    }
+		  if (int_cv2.size() > 0)
+		    {
+		      all_int_cvs2[ix].insert(all_int_cvs2[ix].end(), 
 					      int_cv2.begin(), int_cv2.end());
 		    }
 		}
 	      else
 		sfs2[ix] = surf2;
-	    }
+	      //	}
 	}
     }
 
@@ -3018,7 +3043,8 @@ ftVolumeTools::checkIntCvCoincidence(shared_ptr<CurveOnSurface> *project_cvs,
 	    {
 	      // This is probably good enough
 	      int_cvs1.erase(int_cvs1.begin()+ki);
-	      int_cvs2.erase(int_cvs2.begin()+ki);
+	      if (int_cvs2.size() >  0)
+		int_cvs2.erase(int_cvs2.begin()+ki);
 	      break;
 	    }
 	}

@@ -38,7 +38,7 @@
  */
 
 //#define SBR_DBG
-#define DEBUG
+//#define DEBUG
 
 #include "GoTools/geometry/CurveOnSurface.h"
 #include "GoTools/utils/BoundingBox.h"
