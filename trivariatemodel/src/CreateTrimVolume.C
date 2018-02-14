@@ -110,7 +110,7 @@ shared_ptr<ftVolume> CreateTrimVolume::fetchRotationalTrimVol()
   double angle;
   bool found_axis = identifyRotationalAxis(centre, axis, vec, angle,
 					   rotational_faces, other_faces);
-  if (!found_axis)
+  if ((!found_axis) || rotational_faces.size() < 2)
     return result;   // Not a rotational model
 
   // Identify rotational side surfaces (the two first surfaces)

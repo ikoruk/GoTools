@@ -44,7 +44,7 @@ using std::pair;
 #include "GoTools/geometry/SplineCurve.h"
 #include "GoTools/geometry/GoIntersections.h"
 #include "GoTools/geometry/SISLconversion.h"
-#include "GoTools/geometry/SISL_code.h"
+#include "sislP.h"
  
 //***************************************************************************
 //
